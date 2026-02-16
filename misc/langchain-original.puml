@@ -1,0 +1,537 @@
+@startuml langChain_class_hierarchy
+skinparam handwritten false
+skinparam packageStyle rectangle
+
+' VERIFIED CORE CLASSES ONLY - Based on official LangChain documentation
+' Excludes deprecated/legacy classes that moved to langchain-classic in v1.0
+
+' ============================================================================
+' CORE RUNNABLE INTERFACE
+' ============================================================================
+abstract class Runnable {
+    +invoke(input, config)
+    +batch(inputs, config)
+    +stream(input, config)
+    +ainvoke(input, config)
+    +abatch(inputs, config)
+    +astream(input, config)
+    +bind(**kwargs)
+    +with_config(config)
+    +with_retry()
+    +with_fallbacks(fallbacks)
+    +pipe(other)
+    +assign(**kwargs)
+    +pick(keys)
+}
+
+abstract class RunnableSerializable {
+    +to_json()
+    +configurable_fields(**kwargs)
+}
+
+Runnable <|-- RunnableSerializable
+
+' ============================================================================
+' STRUCTURAL RUNNABLES (LCEL Primitives)
+' ============================================================================
+package "Structural Runnables" {
+    class RunnableSequence <<(C,#ADD1B2)>> #f9f9f9 {
+        -first: Runnable
+        -middle: List[Runnable]
+        -last: Runnable
+        +invoke()
+        +stream()
+    }
+
+    class RunnableParallel <<(C,#ADD1B2)>> #f9f9f9 {
+        -steps: Dict[str, Runnable]
+        +invoke()
+        +batch()
+    }
+
+    class RunnableLambda <<(C,#ADD1B2)>> #f9f9f9 {
+        -func: Callable
+        +invoke()
+        +as_tool()
+    }
+
+    class RunnablePassthrough <<(C,#ADD1B2)>> #f9f9f9 {
+        -func: Callable
+        -afunc: Callable
+        +invoke()
+        +assign(**kwargs)
+    }
+
+    class RunnableBranch <<(C,#ADD1B2)>> #f9f9f9 {
+        -branches: List[Tuple]
+        -default: Runnable
+        +invoke()
+    }
+
+    class RunnableWithFallbacks <<(C,#ADD1B2)>> #f9f9f9 {
+        -runnable: Runnable
+        -fallbacks: List[Runnable]
+        +invoke()
+    }
+
+    class RunnableBinding <<(C,#ADD1B2)>> #f9f9f9 {
+        -bound: Runnable
+        -kwargs: Dict
+        +invoke()
+    }
+
+    class RunnableMap <<(C,#ADD1B2)>> #f9f9f9 {
+        -steps: Dict[str, Runnable]
+        +invoke()
+        +pick(keys)
+    }
+}
+
+Runnable <|-- RunnableSequence
+Runnable <|-- RunnableParallel
+Runnable <|-- RunnableLambda
+Runnable <|-- RunnablePassthrough
+Runnable <|-- RunnableBranch
+Runnable <|-- RunnableWithFallbacks
+Runnable <|-- RunnableBinding
+Runnable <|-- RunnableMap
+
+' ============================================================================
+' LANGUAGE MODELS
+' ============================================================================
+package "Language Models" {
+    abstract class BaseLanguageModel {
+        -cache: BaseCache
+        -callback_manager: BaseCallbackManager
+        {abstract} +generate_prompt()
+        +invoke()
+    }
+
+    abstract class BaseChatModel {
+        +invoke()
+        +stream()
+        +bind_tools()
+        +with_structured_output()
+        {abstract} +_generate()
+    }
+
+    abstract class BaseLLM {
+        +invoke()
+        +generate()
+        +stream()
+        {abstract} +_call()
+    }
+
+    ' Chat Model Implementations
+    class ChatOpenAI {
+        -model_name: str
+        -temperature: float
+        -openai_api_key: str
+        +invoke()
+    }
+
+    class ChatAnthropic {
+        -model: str
+        -anthropic_api_key: str
+        -max_tokens: int
+        +invoke()
+    }
+
+    class ChatOllama {
+        -model: str
+        -base_url: str
+        +invoke()
+    }
+
+    class ChatGoogleGenerativeAI {
+        -model: str
+        -google_api_key: str
+        +invoke()
+    }
+
+    class AzureChatOpenAI {
+        -deployment_name: str
+        -azure_endpoint: str
+        -api_version: str
+        +invoke()
+    }
+
+    class ChatGroq {
+        -model_name: str
+        -groq_api_key: str
+        +invoke()
+    }
+
+    ' LLM Implementations
+    class OpenAI {
+        -model_name: str
+        -temperature: float
+        +invoke()
+    }
+
+    class Ollama {
+        -model: str
+        +invoke()
+    }
+}
+
+RunnableSerializable <|-- BaseLanguageModel
+BaseLanguageModel <|-- BaseChatModel
+BaseLanguageModel <|-- BaseLLM
+
+BaseChatModel <|-- ChatOpenAI
+BaseChatModel <|-- ChatAnthropic
+BaseChatModel <|-- ChatOllama
+BaseChatModel <|-- ChatGoogleGenerativeAI
+BaseChatModel <|-- AzureChatOpenAI
+BaseChatModel <|-- ChatGroq
+
+BaseLLM <|-- OpenAI
+BaseLLM <|-- Ollama
+
+' ============================================================================
+' EMBEDDINGS
+' ============================================================================
+package "Embeddings" {
+    abstract class Embeddings {
+        {abstract} +embed_documents(texts)
+        {abstract} +embed_query(text)
+        +aembed_documents(texts)
+        +aembed_query(text)
+    }
+
+    class OpenAIEmbeddings {
+        -model: str
+        -openai_api_key: str
+        +embed_documents()
+        +embed_query()
+    }
+
+    class AzureOpenAIEmbeddings {
+        -deployment: str
+        -azure_endpoint: str
+        +embed_documents()
+    }
+
+    class BedrockEmbeddings {
+        -model_id: str
+        -region_name: str
+        +embed_documents()
+    }
+}
+
+Embeddings <|-- OpenAIEmbeddings
+Embeddings <|-- AzureOpenAIEmbeddings
+Embeddings <|-- BedrockEmbeddings
+
+' ============================================================================
+' RETRIEVERS & VECTOR STORES
+' ============================================================================
+package "Retrieval" {
+    abstract class BaseRetriever {
+        {abstract} +_get_relevant_documents(query)
+        +get_relevant_documents(query)
+        +invoke()
+        +batch()
+    }
+
+    class VectorStoreRetriever {
+        -vectorstore: VectorStore
+        -search_type: str
+        -search_kwargs: Dict
+        +get_relevant_documents()
+    }
+
+    abstract class VectorStore {
+        {abstract} +add_texts(texts)
+        {abstract} +similarity_search(query)
+        +as_retriever()
+        +from_documents()
+        +from_texts()
+    }
+
+    class Chroma {
+        -collection_name: str
+        -persist_directory: str
+        +add_texts()
+        +similarity_search()
+    }
+
+    class FAISS {
+        -index: Any
+        +add_texts()
+        +similarity_search()
+        +save_local()
+        +load_local()
+    }
+
+    class Pinecone {
+        -index_name: str
+        -namespace: str
+        +add_texts()
+        +similarity_search()
+    }
+}
+
+Runnable <|-- BaseRetriever
+BaseRetriever <|-- VectorStoreRetriever
+VectorStore <|-- Chroma
+VectorStore <|-- FAISS
+VectorStore <|-- Pinecone
+
+VectorStoreRetriever o-- VectorStore
+
+' ============================================================================
+' DOCUMENT LOADERS & TRANSFORMERS
+' ============================================================================
+package "Document Processing" {
+    abstract class BaseDocumentLoader {
+        {abstract} +load()
+        +lazy_load()
+    }
+
+    class TextLoader {
+        -file_path: str
+        -encoding: str
+        +load()
+    }
+
+    class PDFLoader {
+        -file_path: str
+        +load()
+    }
+
+    class CSVLoader {
+        -file_path: str
+        +load()
+    }
+
+    abstract class TextSplitter {
+        -chunk_size: int
+        -chunk_overlap: int
+        {abstract} +split_text(text)
+        +split_documents(documents)
+        +create_documents(texts)
+    }
+
+    class RecursiveCharacterTextSplitter {
+        -separators: List[str]
+        +split_text()
+    }
+
+    class CharacterTextSplitter {
+        -separator: str
+        +split_text()
+    }
+}
+
+BaseDocumentLoader <|-- TextLoader
+BaseDocumentLoader <|-- PDFLoader
+BaseDocumentLoader <|-- CSVLoader
+
+TextSplitter <|-- RecursiveCharacterTextSplitter
+TextSplitter <|-- CharacterTextSplitter
+
+' ============================================================================
+' OUTPUT PARSERS & PROMPTS
+' ============================================================================
+package "Output & Prompts" {
+    abstract class BaseOutputParser {
+        {abstract} +parse(text)
+        +parse_with_prompt(completion, prompt)
+        +get_format_instructions()
+        +invoke()
+    }
+
+    class JsonOutputParser {
+        -pydantic_object: Type
+        +parse()
+        +get_format_instructions()
+    }
+
+    class PydanticOutputParser {
+        -pydantic_object: Type
+        +parse()
+        +get_format_instructions()
+    }
+
+    class StrOutputParser {
+        +parse()
+    }
+
+    abstract class BasePromptTemplate {
+        -input_variables: List[str]
+        {abstract} +format(**kwargs)
+        +format_prompt(**kwargs)
+        +invoke()
+    }
+
+    class PromptTemplate {
+        -template: str
+        +format()
+        +from_template()
+    }
+
+    class ChatPromptTemplate {
+        -messages: List
+        +format()
+        +format_messages()
+        +from_messages()
+    }
+
+    class FewShotPromptTemplate {
+        -examples: List[Dict]
+        -example_prompt: PromptTemplate
+        +format()
+    }
+
+    class MessagesPlaceholder {
+        -variable_name: str
+        +format_messages()
+    }
+}
+
+Runnable <|-- BaseOutputParser
+BaseOutputParser <|-- JsonOutputParser
+BaseOutputParser <|-- PydanticOutputParser
+BaseOutputParser <|-- StrOutputParser
+
+Runnable <|-- BasePromptTemplate
+BasePromptTemplate <|-- PromptTemplate
+BasePromptTemplate <|-- ChatPromptTemplate
+BasePromptTemplate <|-- FewShotPromptTemplate
+BasePromptTemplate <|-- MessagesPlaceholder
+
+' ============================================================================
+' MESSAGES
+' ============================================================================
+package "Messages" {
+    abstract class BaseMessage {
+        -content: str
+        -additional_kwargs: Dict
+        +type()
+    }
+
+    class HumanMessage {
+        -content: str
+    }
+
+    class AIMessage {
+        -content: str
+        -tool_calls: List
+    }
+
+    class SystemMessage {
+        -content: str
+    }
+
+    class FunctionMessage {
+        -content: str
+        -name: str
+    }
+
+    class ToolMessage {
+        -content: str
+        -tool_call_id: str
+    }
+}
+
+BaseMessage <|-- HumanMessage
+BaseMessage <|-- AIMessage
+BaseMessage <|-- SystemMessage
+BaseMessage <|-- FunctionMessage
+BaseMessage <|-- ToolMessage
+
+' ============================================================================
+' TOOLS
+' ============================================================================
+package "Tools" {
+    abstract class BaseTool {
+        -name: str
+        -description: str
+        {abstract} +_run(query)
+        +run(query)
+        +arun(query)
+        +invoke()
+    }
+
+    class Tool {
+        -func: Callable
+        +_run()
+    }
+
+    class StructuredTool {
+        -args_schema: Type[BaseModel]
+        +_run()
+    }
+}
+
+Runnable <|-- BaseTool
+BaseTool <|-- Tool
+BaseTool <|-- StructuredTool
+
+' ============================================================================
+' CALLBACKS
+' ============================================================================
+package "Callbacks" {
+    abstract class BaseCallbackHandler {
+        +on_llm_start()
+        +on_llm_end()
+        +on_llm_error()
+        +on_chain_start()
+        +on_chain_end()
+        +on_tool_start()
+        +on_tool_end()
+    }
+
+    class StdOutCallbackHandler {
+        +on_llm_start()
+        +on_chain_start()
+    }
+}
+
+BaseCallbackHandler <|-- StdOutCallbackHandler
+
+' ============================================================================
+' MEMORY (Core concepts, specific implementations vary)
+' ============================================================================
+package "Memory" {
+    abstract class BaseChatMessageHistory {
+        {abstract} +add_message(message)
+        {abstract} +messages()
+        +clear()
+    }
+
+    class ChatMessageHistory {
+        -messages: List[BaseMessage]
+        +add_message()
+        +clear()
+    }
+}
+
+BaseChatMessageHistory <|-- ChatMessageHistory
+
+note right of RunnableSequence
+  LCEL Core: Created with | operator
+  example: prompt | model | parser
+end note
+
+note right of BaseLanguageModel
+  BaseLanguageModel is the root
+  BaseChatModel for chat models
+  BaseLLM for text completion
+end note
+
+note bottom of Runnable
+  LCEL (LangChain Expression Language)
+  is built on the Runnable interface.
+  All components implement Runnable.
+end note
+
+note right of BaseTool
+  Tools are functions that
+  can be called by agents
+  or bound to models
+end note
+
+@enduml
