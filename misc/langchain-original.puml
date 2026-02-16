@@ -1,5 +1,4 @@
 @startuml langChain_class_hierarchy
-skinparam handwritten false
 skinparam packageStyle rectangle
 
 ' VERIFIED CORE CLASSES ONLY - Based on official LangChain documentation
