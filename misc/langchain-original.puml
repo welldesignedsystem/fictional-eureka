@@ -192,7 +192,7 @@ BaseLLM <|-- Ollama
 ' ============================================================================
 ' EMBEDDINGS
 ' ============================================================================
-package "Embeddings" {
+package "Embedding" {
     abstract class Embeddings {
         {abstract} +embed_documents(texts)
         {abstract} +embed_query(text)
