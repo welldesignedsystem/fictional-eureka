@@ -1,13 +1,47 @@
 @startuml langChain_class_hierarchy
 skinparam packageStyle rectangle
+skinparam legendBackgroundColor #FFFFF0
+skinparam legendBorderColor #AAAAAA
 
-' VERIFIED CORE CLASSES ONLY - Based on official LangChain documentation
-' Excludes deprecated/legacy classes that moved to langchain-classic in v1.0
+' =============================================================================
+' LEGEND
+' =============================================================================
+legend top left
+  |= Colour              |= Package                                   |
+  |<#E8F4FD> Blue        | langchain-core  (base abstractions + LCEL) |
+  |<#FFF8E1> Yellow      | Provider packages (openai, anthropic, etc.)|
+  |<#FDF5E6> Tan         | langchain-community / partner packages     |
+  |<#F0FFF0> Green       | langchain (orchestration)                  |
+  |<#F5F0FF> Lavender    | langgraph 1_0                              |
+endlegend
 
-' ============================================================================
-' CORE RUNNABLE INTERFACE
-' ============================================================================
-abstract class Runnable {
+note as PackageNote
+  Modern install (v1_0):
+    pip install langchain langchain-core
+    pip install langchain-openai  (or langchain-anthropic, etc.)
+    pip install langgraph
+
+  Import paths:
+    Runnable / LCEL primitives  -> langchain_core.runnables
+    Base model abstractions     -> langchain_core.language_models
+    Messages                    -> langchain_core.messages
+    Prompts                     -> langchain_core.prompts
+    Output parsers              -> langchain_core.output_parsers
+    Tools + @tool decorator     -> langchain_core.tools
+    Embeddings                  -> langchain_core.embeddings
+    Retrieval                   -> langchain_core.retrievers
+    Chat history                -> langchain_core.chat_history
+    Callbacks                   -> langchain_core.callbacks
+    Agents (new)                -> langchain.agents [create_agent]
+    Agents (LangGraph low-lvl)  -> langgraph.prebuilt [create_react_agent]
+end note
+
+' =============================================================================
+' LANGCHAIN-CORE: RUNNABLE INTERFACE
+' =============================================================================
+package "langchain-core · Runnable Interface" #E8F4FD {
+
+  abstract class Runnable #E8F4FD {
     +invoke(input, config)
     +batch(inputs, config)
     +stream(input, config)
@@ -21,69 +55,72 @@ abstract class Runnable {
     +pipe(other)
     +assign(**kwargs)
     +pick(keys)
-}
+  }
 
-abstract class RunnableSerializable {
+  abstract class RunnableSerializable #E8F4FD {
     +to_json()
     +configurable_fields(**kwargs)
+  }
+
+  class RunnableConfig #E8F4FD {
+    -tags: List[str]
+    -metadata: Dict
+    -callbacks: List
+    -recursion_limit: int
+    -run_name: str
+    -configurable: Dict
+  }
+
+  Runnable <|-- RunnableSerializable
 }
 
-Runnable <|-- RunnableSerializable
+' =============================================================================
+' LANGCHAIN-CORE: LCEL STRUCTURAL RUNNABLES
+' =============================================================================
+package "langchain-core · Structural Runnables (LCEL)" #E8F4FD {
 
-' ============================================================================
-' STRUCTURAL RUNNABLES (LCEL Primitives)
-' ============================================================================
-package "Structural Runnables" {
-    class RunnableSequence <<(C,#ADD1B2)>> #f9f9f9 {
-        -first: Runnable
-        -middle: List[Runnable]
-        -last: Runnable
-        +invoke()
-        +stream()
-    }
+  class RunnableSequence #E8F4FD {
+    -first: Runnable
+    -middle: List[Runnable]
+    -last: Runnable
+    +invoke()
+    +stream()
+  }
 
-    class RunnableParallel <<(C,#ADD1B2)>> #f9f9f9 {
-        -steps: Dict[str, Runnable]
-        +invoke()
-        +batch()
-    }
+  class RunnableParallel #E8F4FD {
+    -steps: Dict[str, Runnable]
+    +invoke()
+    +batch()
+  }
 
-    class RunnableLambda <<(C,#ADD1B2)>> #f9f9f9 {
-        -func: Callable
-        +invoke()
-        +as_tool()
-    }
+  class RunnableLambda #E8F4FD {
+    -func: Callable
+    +invoke()
+    +as_tool()
+  }
 
-    class RunnablePassthrough <<(C,#ADD1B2)>> #f9f9f9 {
-        -func: Callable
-        -afunc: Callable
-        +invoke()
-        +assign(**kwargs)
-    }
+  class RunnablePassthrough #E8F4FD {
+    +invoke()
+    +assign(**kwargs)
+  }
 
-    class RunnableBranch <<(C,#ADD1B2)>> #f9f9f9 {
-        -branches: List[Tuple]
-        -default: Runnable
-        +invoke()
-    }
+  class RunnableBranch #E8F4FD {
+    -branches: List[Tuple[Runnable, Runnable]]
+    -default: Runnable
+    +invoke()
+  }
 
-    class RunnableWithFallbacks <<(C,#ADD1B2)>> #f9f9f9 {
-        -runnable: Runnable
-        -fallbacks: List[Runnable]
-        +invoke()
-    }
+  class RunnableWithFallbacks #E8F4FD {
+    -runnable: Runnable
+    -fallbacks: List[Runnable]
+    +invoke()
+  }
 
-    class RunnableBinding <<(C,#ADD1B2)>> #f9f9f9 {
-        -bound: Runnable
-        -kwargs: Dict
-        +invoke()
-    }
-
-    class RunnableMap <<(C,#ADD1B2)>> #f9f9f9 {
-        -steps: Dict[str, Runnable]
-        +invoke()
-        +pick(keys)
-    }
+  class RunnableBinding #E8F4FD {
+    -bound: Runnable
+    -kwargs: Dict
+    +invoke()
+  }
 }
 
 Runnable <|-- RunnableSequence
@@ -93,307 +130,216 @@ Runnable <|-- RunnablePassthrough
 Runnable <|-- RunnableBranch
 Runnable <|-- RunnableWithFallbacks
 Runnable <|-- RunnableBinding
-Runnable <|-- RunnableMap
 
-' ============================================================================
-' LANGUAGE MODELS
-' ============================================================================
-package "Language Models" {
-    abstract class BaseLanguageModel {
-        -cache: BaseCache
-        -callback_manager: BaseCallbackManager
-        {abstract} +generate_prompt()
-        +invoke()
-    }
+note right of RunnableSequence
+  Built with the pipe operator:
+  prompt | model | parser
+  Every step must be a Runnable.
+end note
 
-    abstract class BaseChatModel {
-        +invoke()
-        +stream()
-        +bind_tools()
-        +with_structured_output()
-        {abstract} +_generate()
-    }
+' =============================================================================
+' LANGCHAIN-CORE: LANGUAGE MODELS
+' =============================================================================
+package "langchain-core · Language Models" #E8F4FD {
 
-    abstract class BaseLLM {
-        +invoke()
-        +generate()
-        +stream()
-        {abstract} +_call()
-    }
+  abstract class BaseLanguageModel #E8F4FD {
+    -cache: BaseCache
+    -callbacks: List
+    {abstract} +generate_prompt()
+    +invoke()
+    +with_structured_output(schema)
+  }
 
-    ' Chat Model Implementations
-    class ChatOpenAI {
-        -model_name: str
-        -temperature: float
-        -openai_api_key: str
-        +invoke()
-    }
+  abstract class BaseChatModel #E8F4FD {
+    +invoke()
+    +stream()
+    +batch()
+    +bind_tools(tools)
+    +with_structured_output(schema)
+    {abstract} +_generate()
+  }
 
-    class ChatAnthropic {
-        -model: str
-        -anthropic_api_key: str
-        -max_tokens: int
-        +invoke()
-    }
+  abstract class BaseLLM #E8F4FD {
+    +invoke()
+    +generate()
+    +stream()
+    {abstract} +_call()
+  }
 
-    class ChatOllama {
-        -model: str
-        -base_url: str
-        +invoke()
-    }
-
-    class ChatGoogleGenerativeAI {
-        -model: str
-        -google_api_key: str
-        +invoke()
-    }
-
-    class AzureChatOpenAI {
-        -deployment_name: str
-        -azure_endpoint: str
-        -api_version: str
-        +invoke()
-    }
-
-    class ChatGroq {
-        -model_name: str
-        -groq_api_key: str
-        +invoke()
-    }
-
-    ' LLM Implementations
-    class OpenAI {
-        -model_name: str
-        -temperature: float
-        +invoke()
-    }
-
-    class Ollama {
-        -model: str
-        +invoke()
-    }
+  class "init_chat_model()" as init_chat_model <<(F,#FFD700)>> #E8F4FD {
+    ' from langchain_core.language_models
+    +model: str
+    +model_provider: str
+    returns: BaseChatModel
+  }
 }
 
 RunnableSerializable <|-- BaseLanguageModel
 BaseLanguageModel <|-- BaseChatModel
 BaseLanguageModel <|-- BaseLLM
+init_chat_model ..> BaseChatModel : returns
+
+' =============================================================================
+' PROVIDER PACKAGES: CHAT MODEL IMPLEMENTATIONS
+' =============================================================================
+package "Provider Packages · Chat Models" #FFF8E1 {
+
+  class ChatOpenAI #FFF8E1 {
+    ' langchain-openai
+    -model: str
+    -temperature: float
+    -openai_api_key: str
+  }
+
+  class AzureChatOpenAI #FFF8E1 {
+    ' langchain-openai
+    -deployment_name: str
+    -azure_endpoint: str
+    -api_version: str
+  }
+
+  class ChatAnthropic #FFF8E1 {
+    ' langchain-anthropic
+    -model: str
+    -anthropic_api_key: str
+    -max_tokens: int
+  }
+
+  class ChatGoogleGenerativeAI #FFF8E1 {
+    ' langchain-google-genai
+    -model: str
+    -google_api_key: str
+  }
+
+  class ChatOllama #FFF8E1 {
+    ' langchain-ollama
+    -model: str
+    -base_url: str
+  }
+
+  class ChatGroq #FFF8E1 {
+    ' langchain-groq
+    -model_name: str
+    -groq_api_key: str
+  }
+
+  class ChatMistralAI #FFF8E1 {
+    ' langchain-mistralai
+    -model: str
+    -mistral_api_key: str
+  }
+
+  class ChatBedrock #FFF8E1 {
+    ' langchain-aws
+    -model_id: str
+    -region_name: str
+  }
+
+  class ChatDeepSeek #FFF8E1 {
+    ' langchain-deepseek
+    -model: str
+    -api_key: str
+  }
+}
 
 BaseChatModel <|-- ChatOpenAI
-BaseChatModel <|-- ChatAnthropic
-BaseChatModel <|-- ChatOllama
-BaseChatModel <|-- ChatGoogleGenerativeAI
 BaseChatModel <|-- AzureChatOpenAI
+BaseChatModel <|-- ChatAnthropic
+BaseChatModel <|-- ChatGoogleGenerativeAI
+BaseChatModel <|-- ChatOllama
 BaseChatModel <|-- ChatGroq
+BaseChatModel <|-- ChatMistralAI
+BaseChatModel <|-- ChatBedrock
+BaseChatModel <|-- ChatDeepSeek
 
-BaseLLM <|-- OpenAI
-BaseLLM <|-- Ollama
+' =============================================================================
+' LANGCHAIN-CORE: MESSAGES
+' =============================================================================
+package "langchain-core · Messages" #E8F4FD {
 
-' ============================================================================
-' EMBEDDINGS
-' ============================================================================
-package "Embedding" {
-    abstract class Embeddings {
-        {abstract} +embed_documents(texts)
-        {abstract} +embed_query(text)
-        +aembed_documents(texts)
-        +aembed_query(text)
-    }
+  abstract class BaseMessage #E8F4FD {
+    -content: str
+    -additional_kwargs: Dict
+    -id: str
+    +type: str
+  }
 
-    class OpenAIEmbeddings {
-        -model: str
-        -openai_api_key: str
-        +embed_documents()
-        +embed_query()
-    }
+  class HumanMessage #E8F4FD {
+    -content: str
+  }
 
-    class AzureOpenAIEmbeddings {
-        -deployment: str
-        -azure_endpoint: str
-        +embed_documents()
-    }
+  class AIMessage #E8F4FD {
+    -content: str
+    -tool_calls: List[ToolCall]
+    -usage_metadata: UsageMetadata
+  }
 
-    class BedrockEmbeddings {
-        -model_id: str
-        -region_name: str
-        +embed_documents()
-    }
+  class SystemMessage #E8F4FD {
+    -content: str
+  }
+
+  class ToolMessage #E8F4FD {
+    -content: str
+    -tool_call_id: str
+    -artifact: Any
+  }
+
+  class AIMessageChunk #E8F4FD {
+    ' Streaming delta fragment
+    -content: str
+  }
+
+  class ToolCall #E8F4FD {
+    -name: str
+    -args: Dict
+    -id: str
+    -type: str
+  }
 }
 
-Embeddings <|-- OpenAIEmbeddings
-Embeddings <|-- AzureOpenAIEmbeddings
-Embeddings <|-- BedrockEmbeddings
+BaseMessage <|-- HumanMessage
+BaseMessage <|-- AIMessage
+BaseMessage <|-- SystemMessage
+BaseMessage <|-- ToolMessage
+AIMessage <|-- AIMessageChunk
+AIMessage "1" *-- "0..*" ToolCall : contains
 
-' ============================================================================
-' RETRIEVERS & VECTOR STORES
-' ============================================================================
-package "Retrieval" {
-    abstract class BaseRetriever {
-        {abstract} +_get_relevant_documents(query)
-        +get_relevant_documents(query)
-        +invoke()
-        +batch()
-    }
+' =============================================================================
+' LANGCHAIN-CORE: PROMPTS
+' =============================================================================
+package "langchain-core · Prompts" #E8F4FD {
 
-    class VectorStoreRetriever {
-        -vectorstore: VectorStore
-        -search_type: str
-        -search_kwargs: Dict
-        +get_relevant_documents()
-    }
+  abstract class BasePromptTemplate #E8F4FD {
+    -input_variables: List[str]
+    {abstract} +format(**kwargs)
+    +format_prompt(**kwargs)
+    +invoke()
+  }
 
-    abstract class VectorStore {
-        {abstract} +add_texts(texts)
-        {abstract} +similarity_search(query)
-        +as_retriever()
-        +from_documents()
-        +from_texts()
-    }
+  class PromptTemplate #E8F4FD {
+    -template: str
+    +format()
+    +from_template(template)
+  }
 
-    class Chroma {
-        -collection_name: str
-        -persist_directory: str
-        +add_texts()
-        +similarity_search()
-    }
+  class ChatPromptTemplate #E8F4FD {
+    -messages: List
+    +format_messages()
+    +from_messages(messages)
+  }
 
-    class FAISS {
-        -index: Any
-        +add_texts()
-        +similarity_search()
-        +save_local()
-        +load_local()
-    }
+  class FewShotPromptTemplate #E8F4FD {
+    -examples: List[Dict]
+    -example_prompt: PromptTemplate
+    +format()
+  }
 
-    class Pinecone {
-        -index_name: str
-        -namespace: str
-        +add_texts()
-        +similarity_search()
-    }
+  class MessagesPlaceholder #E8F4FD {
+    -variable_name: str
+    -optional: bool
+    +format_messages()
+  }
 }
-
-Runnable <|-- BaseRetriever
-BaseRetriever <|-- VectorStoreRetriever
-VectorStore <|-- Chroma
-VectorStore <|-- FAISS
-VectorStore <|-- Pinecone
-
-VectorStoreRetriever o-- VectorStore
-
-' ============================================================================
-' DOCUMENT LOADERS & TRANSFORMERS
-' ============================================================================
-package "Document Processing" {
-    abstract class BaseDocumentLoader {
-        {abstract} +load()
-        +lazy_load()
-    }
-
-    class TextLoader {
-        -file_path: str
-        -encoding: str
-        +load()
-    }
-
-    class PDFLoader {
-        -file_path: str
-        +load()
-    }
-
-    class CSVLoader {
-        -file_path: str
-        +load()
-    }
-
-    abstract class TextSplitter {
-        -chunk_size: int
-        -chunk_overlap: int
-        {abstract} +split_text(text)
-        +split_documents(documents)
-        +create_documents(texts)
-    }
-
-    class RecursiveCharacterTextSplitter {
-        -separators: List[str]
-        +split_text()
-    }
-
-    class CharacterTextSplitter {
-        -separator: str
-        +split_text()
-    }
-}
-
-BaseDocumentLoader <|-- TextLoader
-BaseDocumentLoader <|-- PDFLoader
-BaseDocumentLoader <|-- CSVLoader
-
-TextSplitter <|-- RecursiveCharacterTextSplitter
-TextSplitter <|-- CharacterTextSplitter
-
-' ============================================================================
-' OUTPUT PARSERS & PROMPTS
-' ============================================================================
-package "Output & Prompts" {
-    abstract class BaseOutputParser {
-        {abstract} +parse(text)
-        +parse_with_prompt(completion, prompt)
-        +get_format_instructions()
-        +invoke()
-    }
-
-    class JsonOutputParser {
-        -pydantic_object: Type
-        +parse()
-        +get_format_instructions()
-    }
-
-    class PydanticOutputParser {
-        -pydantic_object: Type
-        +parse()
-        +get_format_instructions()
-    }
-
-    class StrOutputParser {
-        +parse()
-    }
-
-    abstract class BasePromptTemplate {
-        -input_variables: List[str]
-        {abstract} +format(**kwargs)
-        +format_prompt(**kwargs)
-        +invoke()
-    }
-
-    class PromptTemplate {
-        -template: str
-        +format()
-        +from_template()
-    }
-
-    class ChatPromptTemplate {
-        -messages: List
-        +format()
-        +format_messages()
-        +from_messages()
-    }
-
-    class FewShotPromptTemplate {
-        -examples: List[Dict]
-        -example_prompt: PromptTemplate
-        +format()
-    }
-
-    class MessagesPlaceholder {
-        -variable_name: str
-        +format_messages()
-    }
-}
-
-Runnable <|-- BaseOutputParser
-BaseOutputParser <|-- JsonOutputParser
-BaseOutputParser <|-- PydanticOutputParser
-BaseOutputParser <|-- StrOutputParser
 
 Runnable <|-- BasePromptTemplate
 BasePromptTemplate <|-- PromptTemplate
@@ -401,136 +347,594 @@ BasePromptTemplate <|-- ChatPromptTemplate
 BasePromptTemplate <|-- FewShotPromptTemplate
 BasePromptTemplate <|-- MessagesPlaceholder
 
-' ============================================================================
-' MESSAGES
-' ============================================================================
-package "Messages" {
-    abstract class BaseMessage {
-        -content: str
-        -additional_kwargs: Dict
-        +type()
-    }
+' =============================================================================
+' LANGCHAIN-CORE: OUTPUT PARSERS
+' =============================================================================
+package "langchain-core · Output Parsers" #E8F4FD {
 
-    class HumanMessage {
-        -content: str
-    }
+  abstract class BaseOutputParser #E8F4FD {
+    {abstract} +parse(text)
+    +parse_with_prompt(completion, prompt)
+    +get_format_instructions()
+    +invoke()
+  }
 
-    class AIMessage {
-        -content: str
-        -tool_calls: List
-    }
+  class StrOutputParser #E8F4FD {
+    +parse()
+  }
 
-    class SystemMessage {
-        -content: str
-    }
+  class JsonOutputParser #E8F4FD {
+    -pydantic_object: Type
+    +parse()
+  }
 
-    class FunctionMessage {
-        -content: str
-        -name: str
-    }
+  class PydanticOutputParser #E8F4FD {
+    -pydantic_object: Type[BaseModel]
+    +parse()
+    +get_format_instructions()
+  }
 
-    class ToolMessage {
-        -content: str
-        -tool_call_id: str
-    }
+  class XMLOutputParser #E8F4FD {
+    +parse()
+  }
+
+  class CommaSeparatedListOutputParser #E8F4FD {
+    +parse()
+  }
 }
 
-BaseMessage <|-- HumanMessage
-BaseMessage <|-- AIMessage
-BaseMessage <|-- SystemMessage
-BaseMessage <|-- FunctionMessage
-BaseMessage <|-- ToolMessage
+Runnable <|-- BaseOutputParser
+BaseOutputParser <|-- StrOutputParser
+BaseOutputParser <|-- JsonOutputParser
+BaseOutputParser <|-- PydanticOutputParser
+BaseOutputParser <|-- XMLOutputParser
+BaseOutputParser <|-- CommaSeparatedListOutputParser
 
-' ============================================================================
-' TOOLS
-' ============================================================================
-package "Tools" {
-    abstract class BaseTool {
-        -name: str
-        -description: str
-        {abstract} +_run(query)
-        +run(query)
-        +arun(query)
-        +invoke()
-    }
+' =============================================================================
+' LANGCHAIN-CORE: TOOLS
+' =============================================================================
+package "langchain-core · Tools" #E8F4FD {
 
-    class Tool {
-        -func: Callable
-        +_run()
-    }
+  abstract class BaseTool #E8F4FD {
+    -name: str
+    -description: str
+    -args_schema: Type[BaseModel]
+    -return_direct: bool
+    {abstract} +_run(*args, **kwargs)
+    +run(tool_input)
+    +arun(tool_input)
+    +invoke()
+  }
 
-    class StructuredTool {
-        -args_schema: Type[BaseModel]
-        +_run()
-    }
+  class Tool #E8F4FD {
+    -func: Callable
+    +_run()
+  }
+
+  class StructuredTool #E8F4FD {
+    -coroutine: AsyncCallable
+    +_run()
+    +from_function(func)
+  }
+
+  class "@tool decorator" as tool_decorator <<(F,#FFD700)>> #E8F4FD {
+    ' @tool
+    ' def my_fn(x: int) -> str:
+    '   """docstring becomes description"""
+    returns: StructuredTool
+  }
 }
 
 Runnable <|-- BaseTool
 BaseTool <|-- Tool
 BaseTool <|-- StructuredTool
+tool_decorator ..> StructuredTool : returns
 
-' ============================================================================
-' CALLBACKS
-' ============================================================================
-package "Callbacks" {
-    abstract class BaseCallbackHandler {
-        +on_llm_start()
-        +on_llm_end()
-        +on_llm_error()
-        +on_chain_start()
-        +on_chain_end()
-        +on_tool_start()
-        +on_tool_end()
-    }
+note right of tool_decorator
+  @tool
+  def search(query: str) -> str:
+    """Search the web."""
+    ...
+  Wraps any function into a StructuredTool.
+end note
 
-    class StdOutCallbackHandler {
-        +on_llm_start()
-        +on_chain_start()
-    }
+' =============================================================================
+' LANGCHAIN-CORE: EMBEDDINGS
+' (NOT a Runnable — separate interface)
+' =============================================================================
+package "langchain-core · Embeddings" #E8F4FD {
+
+  abstract class Embeddings #E8F4FD {
+    {abstract} +embed_documents(texts: List[str]): List[List[float]]
+    {abstract} +embed_query(text: str): List[float]
+    +aembed_documents(texts)
+    +aembed_query(text)
+  }
+}
+
+' =============================================================================
+' PROVIDER PACKAGES: EMBEDDING IMPLEMENTATIONS
+' =============================================================================
+package "Provider Packages · Embeddings" #FFF8E1 {
+
+  class OpenAIEmbeddings #FFF8E1 {
+    ' langchain-openai
+    -model: str
+  }
+
+  class AzureOpenAIEmbeddings #FFF8E1 {
+    ' langchain-openai
+    -deployment: str
+    -azure_endpoint: str
+  }
+
+  class BedrockEmbeddings #FFF8E1 {
+    ' langchain-aws
+    -model_id: str
+  }
+
+  class GoogleGenerativeAIEmbeddings #FFF8E1 {
+    ' langchain-google-genai
+    -model: str
+  }
+}
+
+Embeddings <|-- OpenAIEmbeddings
+Embeddings <|-- AzureOpenAIEmbeddings
+Embeddings <|-- BedrockEmbeddings
+Embeddings <|-- GoogleGenerativeAIEmbeddings
+
+' =============================================================================
+' LANGCHAIN-CORE: RETRIEVAL ABSTRACTIONS
+' =============================================================================
+package "langchain-core · Retrieval" #E8F4FD {
+
+  abstract class BaseRetriever #E8F4FD {
+    {abstract} +_get_relevant_documents(query: str)
+    +get_relevant_documents(query: str)
+    +invoke()
+  }
+
+  abstract class VectorStore #E8F4FD {
+    {abstract} +add_texts(texts)
+    {abstract} +similarity_search(query, k)
+    +similarity_search_with_score(query, k)
+    +as_retriever(**kwargs): VectorStoreRetriever
+    +from_documents(docs, embedding)
+    +from_texts(texts, embedding)
+  }
+}
+
+Runnable <|-- BaseRetriever
+VectorStore ..> Embeddings : uses for indexing
+
+' =============================================================================
+' COMMUNITY / PARTNER: VECTOR STORES
+' =============================================================================
+package "langchain-community / Partner Packages · Vector Stores" #FDF5E6 {
+
+  class InMemoryVectorStore #FDF5E6 {
+    ' langchain-core (no extra deps)
+    +add_texts()
+    +similarity_search()
+  }
+
+  class Chroma #FDF5E6 {
+    ' langchain-chroma
+    -collection_name: str
+    -persist_directory: str
+  }
+
+  class FAISS #FDF5E6 {
+    ' langchain-community
+    +save_local(path)
+    +load_local(path, embeddings)
+  }
+
+  class Pinecone #FDF5E6 {
+    ' langchain-pinecone
+    -index_name: str
+    -namespace: str
+  }
+
+  class Weaviate #FDF5E6 {
+    ' langchain-weaviate
+    -client: WeaviateClient
+  }
+
+  class Qdrant #FDF5E6 {
+    ' langchain-qdrant
+    -url: str
+    -collection_name: str
+  }
+
+  class VectorStoreRetriever #FDF5E6 {
+    ' Produced by VectorStore.as_retriever()
+    -vectorstore: VectorStore
+    -search_type: str
+    -search_kwargs: Dict
+    +get_relevant_documents()
+  }
+}
+
+VectorStore <|-- InMemoryVectorStore
+VectorStore <|-- Chroma
+VectorStore <|-- FAISS
+VectorStore <|-- Pinecone
+VectorStore <|-- Weaviate
+VectorStore <|-- Qdrant
+
+BaseRetriever <|-- VectorStoreRetriever
+VectorStoreRetriever o-- VectorStore
+
+' =============================================================================
+' COMMUNITY: DOCUMENT LOADERS & SPLITTERS
+' =============================================================================
+package "langchain-community · Document Processing" #FDF5E6 {
+
+  abstract class BaseDocumentLoader #FDF5E6 {
+    {abstract} +load()
+    +lazy_load()
+    +load_and_split(text_splitter)
+  }
+
+  class TextLoader #FDF5E6 {
+    -file_path: str
+  }
+
+  class PyPDFLoader #FDF5E6 {
+    -file_path: str
+  }
+
+  class CSVLoader #FDF5E6 {
+    -file_path: str
+  }
+
+  class WebBaseLoader #FDF5E6 {
+    -web_paths: List[str]
+  }
+
+  class DirectoryLoader #FDF5E6 {
+    -path: str
+    -glob: str
+  }
+
+  class UnstructuredFileLoader #FDF5E6 {
+    -file_path: str
+  }
+
+  abstract class TextSplitter #FDF5E6 {
+    -chunk_size: int
+    -chunk_overlap: int
+    {abstract} +split_text(text)
+    +split_documents(docs)
+    +create_documents(texts)
+  }
+
+  class RecursiveCharacterTextSplitter #FDF5E6 {
+    -separators: List[str]
+  }
+
+  class CharacterTextSplitter #FDF5E6 {
+    -separator: str
+  }
+
+  class TokenTextSplitter #FDF5E6 {
+    -encoding_name: str
+  }
+}
+
+BaseDocumentLoader <|-- TextLoader
+BaseDocumentLoader <|-- PyPDFLoader
+BaseDocumentLoader <|-- CSVLoader
+BaseDocumentLoader <|-- WebBaseLoader
+BaseDocumentLoader <|-- DirectoryLoader
+BaseDocumentLoader <|-- UnstructuredFileLoader
+
+TextSplitter <|-- RecursiveCharacterTextSplitter
+TextSplitter <|-- CharacterTextSplitter
+TextSplitter <|-- TokenTextSplitter
+
+' =============================================================================
+' LANGCHAIN-CORE: CALLBACKS
+' =============================================================================
+package "langchain-core · Callbacks" #E8F4FD {
+
+  abstract class BaseCallbackHandler #E8F4FD {
+    +on_llm_start()
+    +on_llm_new_token()
+    +on_llm_end()
+    +on_llm_error()
+    +on_chain_start()
+    +on_chain_end()
+    +on_tool_start()
+    +on_tool_end()
+    +on_agent_action()
+    +on_agent_finish()
+  }
+
+  class StdOutCallbackHandler #E8F4FD {
+    +on_llm_start()
+    +on_chain_start()
+  }
+
+  class StreamingStdOutCallbackHandler #E8F4FD {
+    +on_llm_new_token()
+  }
 }
 
 BaseCallbackHandler <|-- StdOutCallbackHandler
+BaseCallbackHandler <|-- StreamingStdOutCallbackHandler
 
-' ============================================================================
-' MEMORY (Core concepts, specific implementations vary)
-' ============================================================================
-package "Memory" {
-    abstract class BaseChatMessageHistory {
-        {abstract} +add_message(message)
-        {abstract} +messages()
-        +clear()
-    }
+Runnable ..> RunnableConfig     : configured by
+Runnable ..> BaseCallbackHandler : notifies
 
-    class ChatMessageHistory {
-        -messages: List[BaseMessage]
-        +add_message()
-        +clear()
-    }
+' =============================================================================
+' LANGCHAIN-CORE: CHAT MESSAGE HISTORY
+' =============================================================================
+package "langchain-core · Chat Message History" #E8F4FD {
+
+  abstract class BaseChatMessageHistory #E8F4FD {
+    ' Append-only message log (NOT prompt injection logic)
+    {abstract} +add_message(message: BaseMessage)
+    {abstract} +messages: List[BaseMessage]
+    +add_messages(messages)
+    +aadd_messages(messages)
+    +clear()
+  }
+
+  class ChatMessageHistory #E8F4FD {
+    ' In-memory implementation
+    -messages: List[BaseMessage]
+    +add_message()
+    +clear()
+  }
 }
 
 BaseChatMessageHistory <|-- ChatMessageHistory
+BaseChatMessageHistory "1" o-- "0..*" BaseMessage : stores
 
-note right of RunnableSequence
-  LCEL Core: Created with | operator
-  example: prompt | model | parser
+' =============================================================================
+' LANGCHAIN: TOOLKITS
+' =============================================================================
+package "langchain · Toolkits" #F0FFF0 {
+
+  abstract class BaseToolkit #F0FFF0 {
+    {abstract} +get_tools(): List[BaseTool]
+  }
+
+  class SQLDatabaseToolkit #F0FFF0 {
+    -db: SQLDatabase
+    -llm: BaseLanguageModel
+    +get_tools()
+  }
+
+  class VectorStoreToolkit #F0FFF0 {
+    -vectorstore_info: VectorStoreInfo
+    +get_tools()
+  }
+
+  class FileManagementToolkit #F0FFF0 {
+    -root_dir: str
+    +get_tools()
+  }
+
+  class JsonToolkit #F0FFF0 {
+    -spec: JsonSpec
+    +get_tools()
+  }
+}
+
+BaseToolkit <|-- SQLDatabaseToolkit
+BaseToolkit <|-- VectorStoreToolkit
+BaseToolkit <|-- FileManagementToolkit
+BaseToolkit <|-- JsonToolkit
+BaseToolkit ..> BaseTool : produces
+
+' =============================================================================
+' LANGCHAIN 1_0: AGENT MIDDLEWARE
+' =============================================================================
+package "langchain 1_0 · Agent Middleware" #F0FFF0 {
+
+  abstract class AgentMiddleware #F0FFF0 {
+    ' from langchain.agents.middleware
+    ' Wraps model calls like HTTP middleware stacks
+    +before_model(state, context)
+    +after_model(state, context)
+    +modify_model_request(request, context)
+  }
+
+  class SummarizationMiddleware #F0FFF0 {
+    -token_threshold: int
+    -keep_last_n: int
+  }
+
+  class HumanInTheLoopMiddleware #F0FFF0 {
+    -approve_tool_calls: bool
+  }
+
+  class PIIRedactionMiddleware #F0FFF0 {
+    -patterns: List[str]
+  }
+
+  class LLMToolSelectorMiddleware #F0FFF0 {
+    -selector_model: BaseChatModel
+  }
+}
+
+AgentMiddleware <|-- SummarizationMiddleware
+AgentMiddleware <|-- HumanInTheLoopMiddleware
+AgentMiddleware <|-- PIIRedactionMiddleware
+AgentMiddleware <|-- LLMToolSelectorMiddleware
+
+LLMToolSelectorMiddleware o-- BaseChatModel
+
+' =============================================================================
+' LANGCHAIN 1_0: create_agent  (PRIMARY AGENT FACTORY)
+' =============================================================================
+package "langchain 1_0 · Agent Factory" #F0FFF0 {
+
+  class "create_agent()" as create_agent_fn <<(F,#00AA00)>> #F0FFF0 {
+    ' from langchain.agents import create_agent
+    +model: str or BaseChatModel
+    +tools: List[BaseTool]
+    +system_prompt: str
+    +middleware: List[AgentMiddleware]
+    +response_format: Type[BaseModel]
+    +checkpointer: BaseCheckpointer
+    +store: BaseStore
+    +interrupt_before: List[str]
+    +interrupt_after: List[str]
+    returns: CompiledStateGraph
+  }
+}
+
+create_agent_fn ..> BaseChatModel      : uses
+create_agent_fn ..> BaseTool           : uses
+create_agent_fn ..> AgentMiddleware    : uses
+create_agent_fn ..> BaseCheckpointer   : uses
+create_agent_fn ..> BaseStore          : uses
+create_agent_fn ..> CompiledStateGraph : returns
+
+note bottom of create_agent_fn
+  PRIMARY agent API in LangChain 1_0.
+  Returns a CompiledStateGraph (LangGraph).
+  agent = create_agent(
+    model="openai:gpt-4o",
+    tools=[search],
+    middleware=[SummarizationMiddleware()],
+  )
+  result = agent.invoke({"messages": [...]})
 end note
 
-note right of BaseLanguageModel
-  BaseLanguageModel is the root
-  BaseChatModel for chat models
-  BaseLLM for text completion
+' =============================================================================
+' LANGGRAPH 1_0: GRAPH RUNTIME
+' =============================================================================
+package "langgraph 1_0 · Graph Runtime" #F5F0FF {
+
+  class StateGraph #F5F0FF {
+    -state_schema: Type
+    +add_node(name, fn)
+    +add_edge(start, end)
+    +add_conditional_edges(source, path_fn, mapping)
+    +set_entry_point(key)
+    +set_finish_point(key)
+    +compile(checkpointer, store): CompiledStateGraph
+  }
+
+  class CompiledStateGraph #F5F0FF {
+    ' Fully implements Runnable protocol
+    +invoke(input, config)
+    +stream(input, config)
+    +batch(inputs, config)
+    +astream_events(input, version)
+    +get_state(config)
+    +update_state(config, values)
+    +get_state_history(config)
+  }
+
+  class MessageGraph #F5F0FF {
+    ' Specialised StateGraph: state is List[BaseMessage]
+  }
+
+  class AgentState #F5F0FF {
+    ' Default TypedDict state for create_react_agent
+    -messages: List[BaseMessage]
+    -structured_response: Any
+  }
+
+  abstract class BaseCheckpointer #F5F0FF {
+    ' from langgraph.checkpoint.base
+    {abstract} +get(config): Checkpoint
+    {abstract} +put(config, checkpoint, metadata)
+    +aget(config)
+    +aput(config, checkpoint, metadata)
+    +list(config)
+  }
+
+  class MemorySaver #F5F0FF {
+    ' from langgraph.checkpoint.memory
+    -storage: Dict
+  }
+
+  class SqliteSaver #F5F0FF {
+    ' from langgraph.checkpoint.sqlite
+    -conn: Connection
+  }
+
+  class PostgresSaver #F5F0FF {
+    ' from langgraph.checkpoint.postgres
+    -pool: ConnectionPool
+  }
+
+  abstract class BaseStore #F5F0FF {
+    ' Cross-thread long-term memory
+    ' from langgraph.store.base
+    {abstract} +put(namespace, key, value)
+    {abstract} +get(namespace, key)
+    {abstract} +search(namespace_prefix)
+    +delete(namespace, key)
+  }
+
+  class InMemoryStore #F5F0FF {
+    ' from langgraph.store.memory
+    -data: Dict
+  }
+
+  class "create_react_agent() [LG]" as LG_react <<(F,#7B2FBE)>> #F5F0FF {
+    ' from langgraph.prebuilt import create_react_agent
+    ' Lower-level: exposes full graph structure
+    +model: BaseChatModel
+    +tools: List[BaseTool]
+    +state_schema: Type
+    +checkpointer: BaseCheckpointer
+    +store: BaseStore
+    +prompt: str
+    +response_format: Type[BaseModel]
+    returns: CompiledStateGraph
+  }
+}
+
+' --- LangGraph internal hierarchy ---
+StateGraph --> CompiledStateGraph : compile()
+MessageGraph --|> StateGraph
+
+BaseCheckpointer <|-- MemorySaver
+BaseCheckpointer <|-- SqliteSaver
+BaseCheckpointer <|-- PostgresSaver
+
+BaseStore <|-- InMemoryStore
+
+' --- CompiledStateGraph IS a Runnable ---
+Runnable <|-- CompiledStateGraph
+
+' --- AgentState uses BaseMessage ---
+AgentState ..> BaseMessage : messages field
+
+' --- create_react_agent dependencies ---
+LG_react ..> BaseChatModel      : uses
+LG_react ..> BaseTool           : uses
+LG_react ..> BaseCheckpointer   : uses
+LG_react ..> BaseStore          : uses
+LG_react ..> CompiledStateGraph : returns
+
+note right of StateGraph
+  LangGraph is the runtime for all
+  new agents. Supports:
+    - Cycles + conditional branching
+    - Human-in-the-loop
+    - Time-travel / state inspection
+    - Persistent multi-thread memory
+  create_agent() wraps this runtime.
+  create_react_agent() exposes the
+  full graph API directly.
 end note
 
-note bottom of Runnable
-  LCEL (LangChain Expression Language)
-  is built on the Runnable interface.
-  All components implement Runnable.
-end note
-
-note right of BaseTool
-  Tools are functions that
-  can be called by agents
-  or bound to models
+note right of BaseCheckpointer
+  Thread-level (per-conversation) memory.
+  Stores full graph state snapshots.
+  Distinct from BaseStore which is
+  cross-thread long-term memory.
 end note
 
 @enduml
