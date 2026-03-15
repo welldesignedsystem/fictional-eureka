@@ -7,33 +7,45 @@ skinparam legendBorderColor #AAAAAA
 ' LEGEND
 ' =============================================================================
 legend top left
-  |= Colour              |= Package                                   |
-  |<#E8F4FD> Blue        | langchain-core  (base abstractions + LCEL) |
-  |<#FFF8E1> Yellow      | Provider packages (openai, anthropic, etc.)|
-  |<#FDF5E6> Tan         | langchain-community / partner packages     |
-  |<#F0FFF0> Green       | langchain (orchestration)                  |
-  |<#F5F0FF> Lavender    | langgraph 1_0                              |
+  |= Colour              |= Package                                        |
+  |<#E8F4FD> Blue        | langchain-core  (base abstractions + LCEL)      |
+  |<#FFF8E1> Yellow      | Provider packages (openai, anthropic, etc.)     |
+  |<#FDF5E6> Tan         | langchain-community / partner packages          |
+  |<#F0FFF0> Green       | langchain 1.0 (orchestration)                   |
+  |<#F5F0FF> Lavender    | langgraph 1.0 (graph runtime)                   |
+  |<#FFE8E8> Pink        | langgraph 1.0 · Types & Primitives              |
 endlegend
 
 note as PackageNote
-  Modern install (v1_0):
+  Modern install (v1.0):
     pip install langchain langchain-core
     pip install langchain-openai  (or langchain-anthropic, etc.)
     pip install langgraph
+    pip install langgraph-checkpoint-sqlite   (optional)
+    pip install langgraph-checkpoint-postgres (optional)
 
-  Import paths:
+  Key import paths:
     Runnable / LCEL primitives  -> langchain_core.runnables
     Base model abstractions     -> langchain_core.language_models
     Messages                    -> langchain_core.messages
     Prompts                     -> langchain_core.prompts
     Output parsers              -> langchain_core.output_parsers
     Tools + @tool decorator     -> langchain_core.tools
+    Injected tool args          -> langchain_core.tools (InjectedState etc.)
     Embeddings                  -> langchain_core.embeddings
     Retrieval                   -> langchain_core.retrievers
     Chat history                -> langchain_core.chat_history
     Callbacks                   -> langchain_core.callbacks
-    Agents (new)                -> langchain.agents [create_agent]
-    Agents (LangGraph low-lvl)  -> langgraph.prebuilt [create_react_agent]
+    Agents (high-level)         -> langchain.agents [create_agent]
+    Graph API (low-level)       -> langgraph.graph [StateGraph]
+    Functional API              -> langgraph.func [@entrypoint, @task]
+    Prebuilt agent              -> langgraph.prebuilt [create_react_agent]
+    Graph types/primitives      -> langgraph.types [Command, Send, interrupt]
+    Runtime context             -> langgraph.runtime [Runtime]
+    Managed state values        -> langgraph.managed [RemainingSteps]
+    Checkpointers               -> langgraph.checkpoint.memory
+                                   langgraph-checkpoint-sqlite (sep. pkg)
+                                   langgraph-checkpoint-postgres (sep. pkg)
 end note
 
 ' =============================================================================
@@ -63,12 +75,16 @@ package "langchain-core · Runnable Interface" #E8F4FD {
   }
 
   class RunnableConfig #E8F4FD {
+    ' Top-level keys (NOT nested in configurable):
     -tags: List[str]
     -metadata: Dict
     -callbacks: List
-    -recursion_limit: int
     -run_name: str
+    ' recursion_limit is a top-level invoke() param,
+    ' not stored here. Default = 1000 (v1.0.6+).
+    ' Thread / memory config goes under:
     -configurable: Dict
+    '   e.g. configurable={"thread_id": "abc"}
   }
 
   Runnable <|-- RunnableSerializable
@@ -121,6 +137,18 @@ package "langchain-core · Structural Runnables (LCEL)" #E8F4FD {
     -kwargs: Dict
     +invoke()
   }
+
+  class RunnableWithMessageHistory #E8F4FD {
+    ' Wraps any Runnable with per-session chat history.
+    ' Useful for adding memory to LCEL chains
+    ' without LangGraph.
+    -runnable: Runnable
+    -get_session_history: Callable[[str], BaseChatMessageHistory]
+    -input_messages_key: str
+    -history_messages_key: str
+    +invoke(input, config)
+    +stream(input, config)
+  }
 }
 
 Runnable <|-- RunnableSequence
@@ -130,11 +158,20 @@ Runnable <|-- RunnablePassthrough
 Runnable <|-- RunnableBranch
 Runnable <|-- RunnableWithFallbacks
 Runnable <|-- RunnableBinding
+Runnable <|-- RunnableWithMessageHistory
 
 note right of RunnableSequence
   Built with the pipe operator:
   prompt | model | parser
   Every step must be a Runnable.
+end note
+
+note right of RunnableWithMessageHistory
+  Uses BaseChatMessageHistory to
+  inject and persist per-session
+  messages around any Runnable.
+  Alternative to LangGraph memory
+  for simpler LCEL chains.
 end note
 
 ' =============================================================================
@@ -151,6 +188,7 @@ package "langchain-core · Language Models" #E8F4FD {
   }
 
   abstract class BaseChatModel #E8F4FD {
+    ' Primary model abstraction for all modern providers.
     +invoke()
     +stream()
     +batch()
@@ -159,16 +197,16 @@ package "langchain-core · Language Models" #E8F4FD {
     {abstract} +_generate()
   }
 
-  abstract class BaseLLM #E8F4FD {
-    +invoke()
-    +generate()
-    +stream()
-    {abstract} +_call()
-  }
+  note as LLMNote
+    BaseLLM (text-completion) is legacy/deprecated.
+    All modern providers implement BaseChatModel.
+    Use BaseChatModel for all new code.
+  end note
 
   class "init_chat_model()" as init_chat_model <<(F,#FFD700)>> #E8F4FD {
     ' from langchain_core.language_models
-    +model: str
+    ' Provider-agnostic factory.
+    +model: str            ' e.g. "openai:gpt-4o"
     +model_provider: str
     returns: BaseChatModel
   }
@@ -176,7 +214,6 @@ package "langchain-core · Language Models" #E8F4FD {
 
 RunnableSerializable <|-- BaseLanguageModel
 BaseLanguageModel <|-- BaseChatModel
-BaseLanguageModel <|-- BaseLLM
 init_chat_model ..> BaseChatModel : returns
 
 ' =============================================================================
@@ -258,18 +295,18 @@ BaseChatModel <|-- ChatDeepSeek
 package "langchain-core · Messages" #E8F4FD {
 
   abstract class BaseMessage #E8F4FD {
-    -content: str
+    -content: str | List
     -additional_kwargs: Dict
     -id: str
     +type: str
   }
 
   class HumanMessage #E8F4FD {
-    -content: str
+    -content: str | List
   }
 
   class AIMessage #E8F4FD {
-    -content: str
+    -content: str | List
     -tool_calls: List[ToolCall]
     -usage_metadata: UsageMetadata
   }
@@ -423,12 +460,31 @@ package "langchain-core · Tools" #E8F4FD {
     '   """docstring becomes description"""
     returns: StructuredTool
   }
+
+  class InjectedToolArgs #E8F4FD {
+    ' Type annotations for auto-injected params.
+    ' from langchain_core.tools
+    '
+    ' InjectedState  - injects graph State into tool
+    ' InjectedStore  - injects langgraph Store
+    ' InjectedToolArg- marks a param as injected
+    '   (excluded from the LLM's tool schema)
+    '
+    ' Usage:
+    '   @tool
+    '   def my_tool(
+    '     x: str,
+    '     state: Annotated[State, InjectedState],
+    '     store: Annotated[BaseStore, InjectedStore],
+    '   ) -> str: ...
+  }
 }
 
 Runnable <|-- BaseTool
 BaseTool <|-- Tool
 BaseTool <|-- StructuredTool
 tool_decorator ..> StructuredTool : returns
+StructuredTool ..> InjectedToolArgs : uses for injection
 
 note right of tool_decorator
   @tool
@@ -438,9 +494,15 @@ note right of tool_decorator
   Wraps any function into a StructuredTool.
 end note
 
+note right of InjectedToolArgs
+  Annotated params are invisible to
+  the LLM's tool schema but are
+  auto-populated by LangGraph at
+  call time from graph state/store.
+end note
+
 ' =============================================================================
 ' LANGCHAIN-CORE: EMBEDDINGS
-' (NOT a Runnable — separate interface)
 ' =============================================================================
 package "langchain-core · Embeddings" #E8F4FD {
 
@@ -491,8 +553,9 @@ package "langchain-core · Retrieval" #E8F4FD {
 
   abstract class BaseRetriever #E8F4FD {
     {abstract} +_get_relevant_documents(query: str)
-    +get_relevant_documents(query: str)
-    +invoke()
+    ' invoke() is the public-facing method (replaces
+    ' deprecated get_relevant_documents())
+    +invoke(input, config)
   }
 
   abstract class VectorStore #E8F4FD {
@@ -553,7 +616,7 @@ package "langchain-community / Partner Packages · Vector Stores" #FDF5E6 {
     -vectorstore: VectorStore
     -search_type: str
     -search_kwargs: Dict
-    +get_relevant_documents()
+    +_get_relevant_documents()
   }
 }
 
@@ -573,9 +636,10 @@ VectorStoreRetriever o-- VectorStore
 package "langchain-community · Document Processing" #FDF5E6 {
 
   abstract class BaseDocumentLoader #FDF5E6 {
-    {abstract} +load()
-    +lazy_load()
-    +load_and_split(text_splitter)
+    {abstract} +load(): List[Document]
+    +lazy_load(): Iterator[Document]
+    ' load_and_split() is DEPRECATED.
+    ' Use loader.load() then splitter.split_documents().
   }
 
   class TextLoader #FDF5E6 {
@@ -606,9 +670,9 @@ package "langchain-community · Document Processing" #FDF5E6 {
   abstract class TextSplitter #FDF5E6 {
     -chunk_size: int
     -chunk_overlap: int
-    {abstract} +split_text(text)
-    +split_documents(docs)
-    +create_documents(texts)
+    {abstract} +split_text(text): List[str]
+    +split_documents(docs): List[Document]
+    +create_documents(texts): List[Document]
   }
 
   class RecursiveCharacterTextSplitter #FDF5E6 {
@@ -666,7 +730,7 @@ package "langchain-core · Callbacks" #E8F4FD {
 BaseCallbackHandler <|-- StdOutCallbackHandler
 BaseCallbackHandler <|-- StreamingStdOutCallbackHandler
 
-Runnable ..> RunnableConfig     : configured by
+Runnable ..> RunnableConfig      : configured by
 Runnable ..> BaseCallbackHandler : notifies
 
 ' =============================================================================
@@ -675,7 +739,8 @@ Runnable ..> BaseCallbackHandler : notifies
 package "langchain-core · Chat Message History" #E8F4FD {
 
   abstract class BaseChatMessageHistory #E8F4FD {
-    ' Append-only message log (NOT prompt injection logic)
+    ' Append-only message log (NOT prompt injection logic).
+    ' Used by RunnableWithMessageHistory for LCEL chains.
     {abstract} +add_message(message: BaseMessage)
     {abstract} +messages: List[BaseMessage]
     +add_messages(messages)
@@ -693,6 +758,7 @@ package "langchain-core · Chat Message History" #E8F4FD {
 
 BaseChatMessageHistory <|-- ChatMessageHistory
 BaseChatMessageHistory "1" o-- "0..*" BaseMessage : stores
+RunnableWithMessageHistory o-- BaseChatMessageHistory : per-session store
 
 ' =============================================================================
 ' LANGCHAIN: TOOLKITS
@@ -732,50 +798,62 @@ BaseToolkit <|-- JsonToolkit
 BaseToolkit ..> BaseTool : produces
 
 ' =============================================================================
-' LANGCHAIN 1_0: AGENT MIDDLEWARE
+' LANGCHAIN 1.0: AGENT MIDDLEWARE
 ' =============================================================================
-package "langchain 1_0 · Agent Middleware" #F0FFF0 {
+package "langchain 1.0 · Agent Middleware" #F0FFF0 {
 
   abstract class AgentMiddleware #F0FFF0 {
     ' from langchain.agents.middleware
-    ' Wraps model calls like HTTP middleware stacks
-    +before_model(state, context)
-    +after_model(state, context)
-    +modify_model_request(request, context)
+    ' Wraps model calls like HTTP middleware stacks.
+    ' __call__ receives the model invocation function
+    ' and returns a wrapped version.
+    +__call__(invoke_model: Callable, state, context): Any
   }
 
   class SummarizationMiddleware #F0FFF0 {
+    ' Compresses long conversation history
+    ' before it hits the model.
     -token_threshold: int
     -keep_last_n: int
-  }
-
-  class HumanInTheLoopMiddleware #F0FFF0 {
-    -approve_tool_calls: bool
+    +__call__()
   }
 
   class PIIRedactionMiddleware #F0FFF0 {
+    ' Scrubs PII from messages before the model.
     -patterns: List[str]
+    +__call__()
   }
 
   class LLMToolSelectorMiddleware #F0FFF0 {
+    ' Dynamically selects a tool subset via a
+    ' secondary LLM call to reduce tool-call noise.
     -selector_model: BaseChatModel
+    +__call__()
   }
+
+  note as HitlNote
+    HumanInTheLoopMiddleware is REMOVED.
+    Human-in-the-loop is now handled by
+    interrupt() from langgraph.types.
+    See the LangGraph Primitives package below.
+  end note
 }
 
 AgentMiddleware <|-- SummarizationMiddleware
-AgentMiddleware <|-- HumanInTheLoopMiddleware
 AgentMiddleware <|-- PIIRedactionMiddleware
 AgentMiddleware <|-- LLMToolSelectorMiddleware
 
 LLMToolSelectorMiddleware o-- BaseChatModel
 
 ' =============================================================================
-' LANGCHAIN 1_0: create_agent  (PRIMARY AGENT FACTORY)
+' LANGCHAIN 1.0: create_agent  (PRIMARY AGENT FACTORY)
 ' =============================================================================
-package "langchain 1_0 · Agent Factory" #F0FFF0 {
+package "langchain 1.0 · Agent Factory" #F0FFF0 {
 
   class "create_agent()" as create_agent_fn <<(F,#00AA00)>> #F0FFF0 {
     ' from langchain.agents import create_agent
+    ' High-level convenience wrapper around
+    ' langgraph.prebuilt.create_react_agent.
     +model: str or BaseChatModel
     +tools: List[BaseTool]
     +system_prompt: str
@@ -797,10 +875,10 @@ create_agent_fn ..> BaseStore          : uses
 create_agent_fn ..> CompiledStateGraph : returns
 
 note bottom of create_agent_fn
-  PRIMARY agent API in LangChain 1_0.
-  Returns a CompiledStateGraph (LangGraph).
+  PRIMARY high-level agent API in LangChain 1.0.
+  Thin wrapper around create_react_agent() (LangGraph).
   agent = create_agent(
-    model="openai:gpt-4o",
+    model="anthropic:claude-sonnet-4-5-20250929",
     tools=[search],
     middleware=[SummarizationMiddleware()],
   )
@@ -808,23 +886,133 @@ note bottom of create_agent_fn
 end note
 
 ' =============================================================================
-' LANGGRAPH 1_0: GRAPH RUNTIME
+' LANGGRAPH 1.0: GRAPH PRIMITIVES (Types + Constants)
 ' =============================================================================
-package "langgraph 1_0 · Graph Runtime" #F5F0FF {
+package "langgraph 1.0 · Types & Primitives" #FFE8E8 {
+
+  class "START / END" as StartEnd #FFE8E8 {
+    ' from langgraph.graph import START, END
+    ' Sentinel constants replacing the deprecated
+    ' set_entry_point() / set_finish_point().
+    '
+    ' Usage:
+    '   graph.add_edge(START, "first_node")
+    '   graph.add_edge("last_node", END)
+  }
+
+  class Command #FFE8E8 {
+    ' from langgraph.types import Command
+    ' Combines state update + routing in one node return.
+    ' Also used to resume after interrupt().
+    -update: Dict          ' State keys to update
+    -goto: str | List[str] ' Node(s) to route to next
+    -graph: str            ' Command.PARENT = parent graph
+    -resume: Any           ' Resume value for interrupt()
+  }
+
+  class Send #FFE8E8 {
+    ' from langgraph.types import Send
+    ' Enables map-reduce: fan out to multiple parallel
+    ' node invocations with different per-call state.
+    ' Returned from conditional edges.
+    -node: str
+    -state: Dict
+    '
+    ' Usage:
+    '   def fan_out(state):
+    '     return [Send("worker", {"item": x})
+    '             for x in state["items"]]
+    '   graph.add_conditional_edges("splitter", fan_out)
+  }
+
+  class "interrupt()" as interrupt_fn <<(F,#FF4444)>> #FFE8E8 {
+    ' from langgraph.types import interrupt
+    ' Pauses graph execution inside a node, saves
+    ' state via checkpointer, returns payload to caller.
+    ' Caller resumes with Command(resume=<value>).
+    ' Replaces compile-time interrupt_before/after for
+    ' production human-in-the-loop.
+    +value: Any   ' JSON-serializable payload to surface
+    ' DO NOT wrap in bare try/except.
+    ' Side effects before interrupt() must be idempotent.
+  }
+
+  class "add_messages()" as add_messages_fn <<(F,#FF4444)>> #FFE8E8 {
+    ' from langgraph.graph.message import add_messages
+    ' Reducer for messages list in State.
+    ' - Appends new messages
+    ' - Deduplicates / overwrites by message ID
+    ' - Deserializes dicts into LangChain Message objects
+    '
+    ' Usage:
+    '   class State(TypedDict):
+    '     messages: Annotated[list[AnyMessage], add_messages]
+  }
+
+  class CachePolicy #FFE8E8 {
+    ' from langgraph.types import CachePolicy
+    ' Attached to a node via add_node(cache_policy=...).
+    -ttl: float | None   ' seconds; None = never expire
+    -key_func: Callable  ' custom cache key fn (default: hash)
+  }
+
+  class "Overwrite" as Overwrite #FFE8E8 {
+    ' from langgraph.types import Overwrite
+    ' Annotated type that bypasses a reducer and
+    ' directly overwrites the state key.
+    '
+    ' Usage:
+    '   class State(TypedDict):
+    '     counter: Annotated[int, Overwrite]
+  }
+
+  class RemainingSteps #FFE8E8 {
+    ' from langgraph.managed import RemainingSteps
+    ' Managed state value; auto-populated by LangGraph.
+    ' Tracks steps left before recursion limit is hit.
+    ' Default recursion_limit = 1000 (v1.0.6+).
+    '
+    ' Usage:
+    '   class State(TypedDict):
+    '     remaining: RemainingSteps
+    '   def node(state):
+    '     if state["remaining"] <= 2: # wrap up
+  }
+}
+
+' =============================================================================
+' LANGGRAPH 1.0: GRAPH RUNTIME
+' =============================================================================
+package "langgraph 1.0 · Graph Runtime" #F5F0FF {
 
   class StateGraph #F5F0FF {
-    -state_schema: Type
-    +add_node(name, fn)
+    ' from langgraph.graph import StateGraph
+    -state_schema: Type        ' TypedDict, dataclass, or Pydantic
+    -context_schema: Type      ' Optional runtime context schema
+    +add_node(name, fn, cache_policy)
     +add_edge(start, end)
     +add_conditional_edges(source, path_fn, mapping)
-    +set_entry_point(key)
-    +set_finish_point(key)
-    +compile(checkpointer, store): CompiledStateGraph
+    ' set_entry_point() / set_finish_point() are DEPRECATED.
+    ' Use add_edge(START, ...) / add_edge(..., END) instead.
+    +compile(checkpointer, store, cache): CompiledStateGraph
+  }
+
+  class MessagesState #F5F0FF {
+    ' from langgraph.graph import MessagesState
+    ' Prebuilt TypedDict state for message-based agents.
+    ' Equivalent to:
+    '   class State(TypedDict):
+    '     messages: Annotated[list[AnyMessage], add_messages]
+    '
+    ' Subclass to add more fields:
+    '   class MyState(MessagesState):
+    '     documents: list[str]
+    -messages: Annotated[list[AnyMessage], add_messages]
   }
 
   class CompiledStateGraph #F5F0FF {
-    ' Fully implements Runnable protocol
-    +invoke(input, config)
+    ' Fully implements Runnable protocol.
+    +invoke(input, config, context, recursion_limit)
     +stream(input, config)
     +batch(inputs, config)
     +astream_events(input, version)
@@ -833,18 +1021,19 @@ package "langgraph 1_0 · Graph Runtime" #F5F0FF {
     +get_state_history(config)
   }
 
-  class MessageGraph #F5F0FF {
-    ' Specialised StateGraph: state is List[BaseMessage]
-  }
-
-  class AgentState #F5F0FF {
-    ' Default TypedDict state for create_react_agent
-    -messages: List[BaseMessage]
-    -structured_response: Any
+  class Runtime #F5F0FF {
+    ' from langgraph.runtime import Runtime
+    ' Injected as third argument to node functions
+    ' when context_schema is set on the graph.
+    +context: ContextSchema
+    +store: BaseStore
+    +stream_writer: Callable
   }
 
   abstract class BaseCheckpointer #F5F0FF {
     ' from langgraph.checkpoint.base
+    ' Thread-level (per-conversation) memory.
+    ' Stores full graph state snapshots per thread.
     {abstract} +get(config): Checkpoint
     {abstract} +put(config, checkpoint, metadata)
     +aget(config)
@@ -854,22 +1043,26 @@ package "langgraph 1_0 · Graph Runtime" #F5F0FF {
 
   class MemorySaver #F5F0FF {
     ' from langgraph.checkpoint.memory
+    ' In-process; development / testing only.
     -storage: Dict
   }
 
   class SqliteSaver #F5F0FF {
     ' from langgraph.checkpoint.sqlite
-    -conn: Connection
+    ' Requires: pip install langgraph-checkpoint-sqlite
+    -conn: sqlite3.Connection
   }
 
   class PostgresSaver #F5F0FF {
     ' from langgraph.checkpoint.postgres
+    ' Requires: pip install langgraph-checkpoint-postgres
     -pool: ConnectionPool
   }
 
   abstract class BaseStore #F5F0FF {
-    ' Cross-thread long-term memory
     ' from langgraph.store.base
+    ' Cross-thread long-term memory (shared across threads).
+    ' Distinct from BaseCheckpointer (per-thread snapshots).
     {abstract} +put(namespace, key, value)
     {abstract} +get(namespace, key)
     {abstract} +search(namespace_prefix)
@@ -883,21 +1076,20 @@ package "langgraph 1_0 · Graph Runtime" #F5F0FF {
 
   class "create_react_agent() [LG]" as LG_react <<(F,#7B2FBE)>> #F5F0FF {
     ' from langgraph.prebuilt import create_react_agent
-    ' Lower-level: exposes full graph structure
+    ' Low-level: exposes full graph structure.
+    ' Called internally by create_agent().
     +model: BaseChatModel
     +tools: List[BaseTool]
     +state_schema: Type
     +checkpointer: BaseCheckpointer
     +store: BaseStore
-    +prompt: str
+    +prompt: str | BasePromptTemplate
     +response_format: Type[BaseModel]
     returns: CompiledStateGraph
   }
 }
 
-' --- LangGraph internal hierarchy ---
-StateGraph --> CompiledStateGraph : compile()
-MessageGraph --|> StateGraph
+StateGraph --> CompiledStateGraph    : compile()
 
 BaseCheckpointer <|-- MemorySaver
 BaseCheckpointer <|-- SqliteSaver
@@ -905,36 +1097,99 @@ BaseCheckpointer <|-- PostgresSaver
 
 BaseStore <|-- InMemoryStore
 
-' --- CompiledStateGraph IS a Runnable ---
 Runnable <|-- CompiledStateGraph
 
-' --- AgentState uses BaseMessage ---
-AgentState ..> BaseMessage : messages field
+Runtime ..> BaseStore              : holds ref to
+StateGraph ..> MessagesState       : commonly used as state_schema
 
-' --- create_react_agent dependencies ---
-LG_react ..> BaseChatModel      : uses
-LG_react ..> BaseTool           : uses
-LG_react ..> BaseCheckpointer   : uses
-LG_react ..> BaseStore          : uses
-LG_react ..> CompiledStateGraph : returns
+LG_react ..> BaseChatModel       : uses
+LG_react ..> BaseTool            : uses
+LG_react ..> BaseCheckpointer    : uses
+LG_react ..> BaseStore           : uses
+LG_react ..> CompiledStateGraph  : returns
 
 note right of StateGraph
-  LangGraph is the runtime for all
-  new agents. Supports:
-    - Cycles + conditional branching
-    - Human-in-the-loop
-    - Time-travel / state inspection
-    - Persistent multi-thread memory
-  create_agent() wraps this runtime.
-  create_react_agent() exposes the
-  full graph API directly.
+  Node function signatures (all optional):
+    def my_node(
+      state: State,
+      config: RunnableConfig,   # thread_id, tags, etc.
+      runtime: Runtime[Ctx],    # context + store ref
+    ): ...
+  context_schema enables Runtime injection:
+    StateGraph(State, context_schema=MyContext)
+  Node-level caching:
+    graph.add_node("n", fn, cache_policy=CachePolicy(ttl=60))
+    graph.compile(cache=InMemoryCache())
 end note
 
 note right of BaseCheckpointer
-  Thread-level (per-conversation) memory.
+  Thread-level per-conversation memory.
   Stores full graph state snapshots.
   Distinct from BaseStore which is
   cross-thread long-term memory.
+  SqliteSaver / PostgresSaver live in
+  SEPARATE pip packages (not langchain-core).
 end note
+
+note right of MessagesState
+  MessageGraph is REMOVED in v1.0.
+  Use StateGraph(MessagesState) instead.
+end note
+
+' =============================================================================
+' LANGGRAPH 1.0: FUNCTIONAL API
+' =============================================================================
+package "langgraph 1.0 · Functional API" #F5F0FF {
+
+  class "@entrypoint decorator" as entrypoint_dec <<(F,#7B2FBE)>> #F5F0FF {
+    ' from langgraph.func import entrypoint
+    ' Marks a Python function as a LangGraph entrypoint.
+    ' Provides automatic checkpointing, streaming,
+    ' and human-in-the-loop without explicit StateGraph.
+    '
+    ' Usage:
+    '   @entrypoint(checkpointer=MemorySaver())
+    '   def my_agent(input: dict) -> dict:
+    '     result = my_task(input["x"]).result()
+    '     return {"output": result}
+    +checkpointer: BaseCheckpointer
+    +store: BaseStore
+    returns: CompiledEntrypoint
+  }
+
+  class "@task decorator" as task_dec <<(F,#7B2FBE)>> #F5F0FF {
+    ' from langgraph.func import task
+    ' Marks a Python function as a LangGraph task.
+    ' Tasks run inside an @entrypoint and are
+    ' automatically checkpointed. Calling a task
+    ' returns a Future-like object; call .result().
+    '
+    ' Usage:
+    '   @task
+    '   def my_task(x: int) -> int:
+    '     return x * 2
+    '
+    '   result = my_task(5).result()
+    returns: Task
+  }
+
+  note as FuncAPINote
+    Functional API vs Graph API:
+    - Functional: Pythonic; plain functions with
+      @entrypoint / @task decorators. No explicit
+      state schema or node/edge definitions.
+    - Graph API: Explicit StateGraph with nodes,
+      edges, reducers, and typed State.
+    Both support checkpointing, streaming,
+    interrupt(), and human-in-the-loop.
+    Choose Graph API when you need
+    conditional routing, parallel branches,
+    or subgraphs.
+  end note
+}
+
+entrypoint_dec ..> BaseCheckpointer : uses
+entrypoint_dec ..> BaseStore        : uses
+entrypoint_dec ..> CompiledStateGraph : produces (internally)
 
 @enduml
