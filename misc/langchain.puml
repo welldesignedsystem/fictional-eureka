@@ -1140,6 +1140,24 @@ package "langchain 1.0 - Agent Middleware" #F0FFF0 {
     '   CodexSandboxExecutionPolicy - Codex CLI sandbox
   }
 
+  class HostExecutionPolicy #F0FFF0 {
+    ' full host access (default)
+  }
+
+  class DockerExecutionPolicy #F0FFF0 {
+    ' isolated Docker container
+    -image: str
+    -command_timeout: float
+  }
+
+  class CodexSandboxExecutionPolicy #F0FFF0 {
+    ' Codex CLI sandbox
+  }
+
+  HostExecutionPolicy --|> BaseExecutionPolicy
+  DockerExecutionPolicy --|> BaseExecutionPolicy
+  CodexSandboxExecutionPolicy --|> BaseExecutionPolicy
+
   class FilesystemFileSearchMiddleware #F0FFF0 {
     ' Adds glob_search and grep_search tools to the agent.
     ' Hook used: before_agent (node-style)
