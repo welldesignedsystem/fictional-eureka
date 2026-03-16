@@ -1,0 +1,1612 @@
+@startuml langchain
+
+skinparam packageStyle rectangle
+skinparam legendBackgroundColor #FFFFF0
+skinparam legendBorderColor #AAAAAA
+
+' =============================================================================
+' LEGEND
+' =============================================================================
+legend top left
+  |= Colour         |= Package                                      |
+  |<#E8F4FD> Blue   | langchain-core (base abstractions + LCEL)     |
+  |<#FFF8E1> Yellow | Provider packages (openai, anthropic, etc.)   |
+  |<#FDF5E6> Tan    | langchain-community / partner packages        |
+  |<#F0FFF0> Green  | langchain 1.0 (orchestration)                 |
+  |<#F5F0FF> Lavend | langgraph 1.0 (graph runtime)                 |
+  |<#FFE8E8> Pink   | langgraph 1.0 Types and Primitives            |
+  |<#FFF0E8> Orange | langchain 1.0 Middleware support types        |
+endlegend
+
+note as PackageNote
+  Modern install (v1.0):
+    pip install langchain langchain-core
+    pip install langchain-openai (or langchain-anthropic, etc.)
+    pip install langgraph
+    pip install langgraph-checkpoint-sqlite   (optional)
+    pip install langgraph-checkpoint-postgres (optional)
+
+  Key import paths:
+    Runnable / LCEL primitives   -> langchain_core.runnables
+    Base model abstractions      -> langchain_core.language_models
+    Messages                     -> langchain_core.messages
+    Document                     -> langchain_core.documents
+    Prompts                      -> langchain_core.prompts
+    Output parsers               -> langchain_core.output_parsers
+    Tools + @tool decorator      -> langchain_core.tools
+    Injected tool args           -> langchain_core.tools
+    Embeddings                   -> langchain_core.embeddings
+    Retrieval                    -> langchain_core.retrievers
+    Chat history                 -> langchain_core.chat_history
+    Callbacks                    -> langchain_core.callbacks
+    Agents (high-level)          -> langchain.agents [create_agent]
+    Middleware classes            -> langchain.agents.middleware
+    Middleware hook decorators   -> langchain.agents.middleware
+    Graph API (low-level)        -> langgraph.graph [StateGraph]
+    Prebuilt nodes               -> langgraph.prebuilt [ToolNode, tools_condition]
+    Functional API               -> langgraph.func [@entrypoint, @task]
+    Prebuilt agent               -> langgraph.prebuilt [create_react_agent]
+    Graph types/primitives       -> langgraph.types [Command, Send, interrupt]
+    Runtime context              -> langgraph.runtime [Runtime]
+    Managed state values         -> langgraph.managed [RemainingSteps]
+    Checkpointers                -> langgraph.checkpoint.memory [InMemorySaver]
+                                    langgraph-checkpoint-sqlite (sep. pkg)
+                                    langgraph-checkpoint-postgres (sep. pkg)
+    Node cache                   -> langgraph.cache.memory [InMemoryCache]
+    Errors                       -> langgraph.errors [GraphRecursionError]
+end note
+
+' =============================================================================
+' LANGCHAIN-CORE: RUNNABLE INTERFACE
+' =============================================================================
+package "langchain-core - Runnable Interface" #E8F4FD {
+
+  abstract class Runnable #E8F4FD {
+    +invoke(input, config)
+    +batch(inputs, config)
+    +stream(input, config)
+    +ainvoke(input, config)
+    +abatch(inputs, config)
+    +astream(input, config)
+    +bind(**kwargs)
+    +with_config(config)
+    +with_retry()
+    +with_fallbacks(fallbacks)
+    +pipe(other)
+    +assign(**kwargs)
+    +pick(keys)
+  }
+
+  abstract class RunnableSerializable #E8F4FD {
+    +to_json()
+    +configurable_fields(**kwargs)
+  }
+
+  class RunnableConfig #E8F4FD {
+    -tags: List[str]
+    -metadata: Dict
+    -callbacks: List
+    -run_name: str
+    -configurable: Dict
+    ' recursion_limit is a top-level invoke() param
+    ' Default = 1000 (v1.0.6+). NOT stored here.
+    ' Thread config: configurable={"thread_id": "abc"}
+    ' Time-travel:   configurable={"thread_id": "abc",
+    '                 "checkpoint_id": "xyz"}
+  }
+
+  Runnable <|-- RunnableSerializable
+}
+
+' =============================================================================
+' LANGCHAIN-CORE: LCEL STRUCTURAL RUNNABLES
+' =============================================================================
+package "langchain-core - Structural Runnables (LCEL)" #E8F4FD {
+
+  class RunnableSequence #E8F4FD {
+    -first: Runnable
+    -middle: List[Runnable]
+    -last: Runnable
+    +invoke()
+    +stream()
+  }
+
+  class RunnableParallel #E8F4FD {
+    -steps: Dict[str, Runnable]
+    +invoke()
+    +batch()
+  }
+
+  class RunnableLambda #E8F4FD {
+    -func: Callable
+    +invoke()
+    +as_tool()
+  }
+
+  class RunnablePassthrough #E8F4FD {
+    +invoke()
+    +assign(**kwargs)
+  }
+
+  class RunnableBranch #E8F4FD {
+    -branches: List[Tuple[Runnable, Runnable]]
+    -default: Runnable
+    +invoke()
+  }
+
+  class RunnableWithFallbacks #E8F4FD {
+    -runnable: Runnable
+    -fallbacks: List[Runnable]
+    +invoke()
+  }
+
+  class RunnableBinding #E8F4FD {
+    -bound: Runnable
+    -kwargs: Dict
+    +invoke()
+  }
+
+  class RunnableWithMessageHistory #E8F4FD {
+    ' Wraps any Runnable with per-session chat history.
+    ' Alternative to LangGraph memory for LCEL chains.
+    -runnable: Runnable
+    -get_session_history: Callable
+    -input_messages_key: str
+    -history_messages_key: str
+    +invoke(input, config)
+    +stream(input, config)
+  }
+}
+
+Runnable <|-- RunnableSequence
+Runnable <|-- RunnableParallel
+Runnable <|-- RunnableLambda
+Runnable <|-- RunnablePassthrough
+Runnable <|-- RunnableBranch
+Runnable <|-- RunnableWithFallbacks
+Runnable <|-- RunnableBinding
+Runnable <|-- RunnableWithMessageHistory
+
+note right of RunnableSequence
+  Built with the pipe operator:
+    prompt | model | parser
+  Every step must be a Runnable.
+end note
+
+' =============================================================================
+' LANGCHAIN-CORE: LANGUAGE MODELS
+' =============================================================================
+package "langchain-core - Language Models" #E8F4FD {
+
+  abstract class BaseLanguageModel #E8F4FD {
+    -cache: BaseCache
+    -callbacks: List
+    {abstract} +generate_prompt()
+    +invoke()
+    +with_structured_output(schema)
+  }
+
+  abstract class BaseChatModel #E8F4FD {
+    ' Primary model abstraction for all modern providers.
+    ' BaseLLM (text-completion) is legacy/deprecated.
+    +invoke()
+    +stream()
+    +batch()
+    +bind_tools(tools)
+    +with_structured_output(schema)
+    {abstract} +_generate()
+  }
+
+  class init_chat_model <<(F,#FFD700)>> #E8F4FD {
+    ' from langchain_core.language_models
+    ' Provider-agnostic factory.
+    ' e.g. init_chat_model("openai:gpt-4o")
+    +model: str
+    +model_provider: str
+    +profile: Dict
+    ..returns..
+    BaseChatModel
+  }
+}
+
+RunnableSerializable <|-- BaseLanguageModel
+BaseLanguageModel <|-- BaseChatModel
+init_chat_model ..> BaseChatModel : returns
+
+' =============================================================================
+' PROVIDER PACKAGES: CHAT MODEL IMPLEMENTATIONS
+' =============================================================================
+package "Provider Packages - Chat Models" #FFF8E1 {
+
+  class ChatOpenAI #FFF8E1 {
+    ' langchain-openai
+    -model: str
+    -temperature: float
+    -openai_api_key: str
+  }
+
+  class AzureChatOpenAI #FFF8E1 {
+    ' langchain-openai
+    -deployment_name: str
+    -azure_endpoint: str
+    -api_version: str
+  }
+
+  class ChatAnthropic #FFF8E1 {
+    ' langchain-anthropic
+    -model: str
+    -anthropic_api_key: str
+    -max_tokens: int
+  }
+
+  class ChatGoogleGenerativeAI #FFF8E1 {
+    ' langchain-google-genai
+    -model: str
+    -google_api_key: str
+  }
+
+  class ChatOllama #FFF8E1 {
+    ' langchain-ollama
+    -model: str
+    -base_url: str
+  }
+
+  class ChatGroq #FFF8E1 {
+    ' langchain-groq
+    -model_name: str
+    -groq_api_key: str
+  }
+
+  class ChatMistralAI #FFF8E1 {
+    ' langchain-mistralai
+    -model: str
+    -mistral_api_key: str
+  }
+
+  class ChatBedrock #FFF8E1 {
+    ' langchain-aws
+    -model_id: str
+    -region_name: str
+  }
+
+  class ChatDeepSeek #FFF8E1 {
+    ' langchain-deepseek
+    -model: str
+    -api_key: str
+  }
+}
+
+BaseChatModel <|-- ChatOpenAI
+BaseChatModel <|-- AzureChatOpenAI
+BaseChatModel <|-- ChatAnthropic
+BaseChatModel <|-- ChatGoogleGenerativeAI
+BaseChatModel <|-- ChatOllama
+BaseChatModel <|-- ChatGroq
+BaseChatModel <|-- ChatMistralAI
+BaseChatModel <|-- ChatBedrock
+BaseChatModel <|-- ChatDeepSeek
+
+' =============================================================================
+' LANGCHAIN-CORE: MESSAGES
+' =============================================================================
+package "langchain-core - Messages" #E8F4FD {
+
+  abstract class BaseMessage #E8F4FD {
+    -content: str or List
+    -additional_kwargs: Dict
+    -id: str
+    +type: str
+  }
+
+  class HumanMessage #E8F4FD {
+    -content: str or List
+  }
+
+  class AIMessage #E8F4FD {
+    -content: str or List
+    -tool_calls: List[ToolCall]
+    -usage_metadata: UsageMetadata
+  }
+
+  class SystemMessage #E8F4FD {
+    -content: str
+  }
+
+  class ToolMessage #E8F4FD {
+    -content: str
+    -tool_call_id: str
+    -artifact: Any
+  }
+
+  class AIMessageChunk #E8F4FD {
+    ' Streaming delta fragment
+    -content: str
+  }
+
+  class RemoveMessage #E8F4FD {
+    ' from langchain_core.messages
+    ' Used with add_messages reducer to DELETE
+    ' a message from graph state by id.
+    ' Usage: return {"messages": [RemoveMessage(id="x")]}
+    -id: str
+  }
+
+  class AnyMessage #E8F4FD {
+    ' from langchain_core.messages import AnyMessage
+    ' Union type alias used in MessagesState.
+    ' = HumanMessage or AIMessage or SystemMessage
+    '   or ToolMessage or ChatMessage or ...
+  }
+
+  class ToolCall #E8F4FD {
+    -name: str
+    -args: Dict
+    -id: str
+    -type: str
+  }
+}
+
+BaseMessage <|-- HumanMessage
+BaseMessage <|-- AIMessage
+BaseMessage <|-- SystemMessage
+BaseMessage <|-- ToolMessage
+BaseMessage <|-- RemoveMessage
+AIMessage <|-- AIMessageChunk
+AIMessage "1" *-- "0..*" ToolCall : contains
+
+' =============================================================================
+' LANGCHAIN-CORE: DOCUMENT
+' =============================================================================
+package "langchain-core - Documents" #E8F4FD {
+
+  class Document #E8F4FD {
+    ' from langchain_core.documents import Document
+    ' Fundamental data container returned by all
+    ' document loaders and retrievers.
+    -page_content: str
+    -metadata: Dict
+    -id: str
+  }
+}
+
+' =============================================================================
+' LANGCHAIN-CORE: PROMPTS
+' =============================================================================
+package "langchain-core - Prompts" #E8F4FD {
+
+  abstract class BasePromptTemplate #E8F4FD {
+    -input_variables: List[str]
+    {abstract} +format(**kwargs): str
+    +format_prompt(**kwargs): PromptValue
+    +invoke(): PromptValue
+  }
+
+  class PromptValue #E8F4FD {
+    ' Intermediate type between prompt and model.
+    ' Subclasses: StringPromptValue, ChatPromptValue
+    {abstract} +to_string(): str
+    {abstract} +to_messages(): List[BaseMessage]
+  }
+
+  class PromptTemplate #E8F4FD {
+    -template: str
+    +format()
+    +from_template(template)
+  }
+
+  class ChatPromptTemplate #E8F4FD {
+    -messages: List
+    +format_messages()
+    +from_messages(messages)
+  }
+
+  class FewShotPromptTemplate #E8F4FD {
+    -examples: List[Dict]
+    -example_prompt: PromptTemplate
+    +format()
+  }
+
+  class MessagesPlaceholder #E8F4FD {
+    -variable_name: str
+    -optional: bool
+    +format_messages()
+  }
+}
+
+Runnable <|-- BasePromptTemplate
+BasePromptTemplate <|-- PromptTemplate
+BasePromptTemplate <|-- ChatPromptTemplate
+BasePromptTemplate <|-- FewShotPromptTemplate
+BasePromptTemplate <|-- MessagesPlaceholder
+BasePromptTemplate ..> PromptValue : returns
+
+' =============================================================================
+' LANGCHAIN-CORE: OUTPUT PARSERS
+' =============================================================================
+package "langchain-core - Output Parsers" #E8F4FD {
+
+  abstract class BaseOutputParser #E8F4FD {
+    {abstract} +parse(text)
+    +parse_with_prompt(completion, prompt)
+    +get_format_instructions()
+    +invoke()
+  }
+
+  class StrOutputParser #E8F4FD {
+    +parse()
+  }
+
+  class JsonOutputParser #E8F4FD {
+    -pydantic_object: Type
+    +parse()
+  }
+
+  class PydanticOutputParser #E8F4FD {
+    -pydantic_object: Type[BaseModel]
+    +parse()
+    +get_format_instructions()
+  }
+
+  class XMLOutputParser #E8F4FD {
+    +parse()
+  }
+
+  class CommaSeparatedListOutputParser #E8F4FD {
+    +parse()
+  }
+}
+
+Runnable <|-- BaseOutputParser
+BaseOutputParser <|-- StrOutputParser
+BaseOutputParser <|-- JsonOutputParser
+BaseOutputParser <|-- PydanticOutputParser
+BaseOutputParser <|-- XMLOutputParser
+BaseOutputParser <|-- CommaSeparatedListOutputParser
+
+' =============================================================================
+' LANGCHAIN-CORE: TOOLS
+' =============================================================================
+package "langchain-core - Tools" #E8F4FD {
+
+  abstract class BaseTool #E8F4FD {
+    -name: str
+    -description: str
+    -args_schema: Type[BaseModel]
+    -return_direct: bool
+    {abstract} +_run(*args, **kwargs)
+    +run(tool_input)
+    +arun(tool_input)
+    +invoke()
+  }
+
+  class Tool #E8F4FD {
+    -func: Callable
+    +_run()
+  }
+
+  class StructuredTool #E8F4FD {
+    -coroutine: AsyncCallable
+    +_run()
+    +from_function(func)
+  }
+
+  class tool_decorator <<(F,#FFD700)>> #E8F4FD {
+    ' @tool decorator
+    ' def my_fn(x: int) -> str:
+    '   """docstring = description"""
+    ' Wraps any function into a StructuredTool.
+    ..returns..
+    StructuredTool
+  }
+
+  class InjectedToolArgs #E8F4FD {
+    ' from langchain_core.tools
+    ' Type annotations for auto-injected params.
+    ' Excluded from the LLM tool schema.
+    '
+    ' InjectedState  -> injects graph State
+    ' InjectedStore  -> injects langgraph BaseStore
+    ' InjectedToolArg-> generic injected param
+    '
+    ' @tool
+    ' def my_tool(
+    '   x: str,
+    '   state: Annotated[State, InjectedState],
+    '   store: Annotated[BaseStore, InjectedStore],
+    ' ) -> str: ...
+  }
+}
+
+Runnable <|-- BaseTool
+BaseTool <|-- Tool
+BaseTool <|-- StructuredTool
+tool_decorator ..> StructuredTool : returns
+StructuredTool ..> InjectedToolArgs : uses for injection
+
+' =============================================================================
+' LANGCHAIN-CORE: EMBEDDINGS
+' =============================================================================
+package "langchain-core - Embeddings" #E8F4FD {
+
+  abstract class Embeddings #E8F4FD {
+    {abstract} +embed_documents(texts: List[str]): List[List[float]]
+    {abstract} +embed_query(text: str): List[float]
+    +aembed_documents(texts)
+    +aembed_query(text)
+  }
+}
+
+package "Provider Packages - Embeddings" #FFF8E1 {
+
+  class OpenAIEmbeddings #FFF8E1 {
+    ' langchain-openai
+    -model: str
+  }
+
+  class AzureOpenAIEmbeddings #FFF8E1 {
+    ' langchain-openai
+    -deployment: str
+    -azure_endpoint: str
+  }
+
+  class BedrockEmbeddings #FFF8E1 {
+    ' langchain-aws
+    -model_id: str
+  }
+
+  class GoogleGenerativeAIEmbeddings #FFF8E1 {
+    ' langchain-google-genai
+    -model: str
+  }
+}
+
+Embeddings <|-- OpenAIEmbeddings
+Embeddings <|-- AzureOpenAIEmbeddings
+Embeddings <|-- BedrockEmbeddings
+Embeddings <|-- GoogleGenerativeAIEmbeddings
+
+' =============================================================================
+' LANGCHAIN-CORE: RETRIEVAL
+' =============================================================================
+package "langchain-core - Retrieval" #E8F4FD {
+
+  abstract class BaseRetriever #E8F4FD {
+    ' invoke() is the public API.
+    ' get_relevant_documents() is DEPRECATED.
+    {abstract} +_get_relevant_documents(query: str): List[Document]
+    +invoke(input, config): List[Document]
+  }
+
+  abstract class VectorStore #E8F4FD {
+    {abstract} +add_texts(texts)
+    {abstract} +similarity_search(query, k): List[Document]
+    +similarity_search_with_score(query, k)
+    +as_retriever(**kwargs): VectorStoreRetriever
+    +from_documents(docs, embedding)
+    +from_texts(texts, embedding)
+  }
+}
+
+Runnable <|-- BaseRetriever
+VectorStore ..> Embeddings : uses for indexing
+BaseRetriever ..> Document  : returns
+
+' =============================================================================
+' COMMUNITY / PARTNER: VECTOR STORES
+' =============================================================================
+package "langchain-community - Vector Stores" #FDF5E6 {
+
+  class InMemoryVectorStore #FDF5E6 {
+    ' langchain-core (no extra deps)
+    +add_texts()
+    +similarity_search()
+  }
+
+  class Chroma #FDF5E6 {
+    ' langchain-chroma
+    -collection_name: str
+    -persist_directory: str
+  }
+
+  class FAISS #FDF5E6 {
+    ' langchain-community
+    +save_local(path)
+    +load_local(path, embeddings)
+  }
+
+  class Pinecone #FDF5E6 {
+    ' langchain-pinecone
+    -index_name: str
+    -namespace: str
+  }
+
+  class Weaviate #FDF5E6 {
+    ' langchain-weaviate
+    -client: WeaviateClient
+  }
+
+  class Qdrant #FDF5E6 {
+    ' langchain-qdrant
+    -url: str
+    -collection_name: str
+  }
+
+  class VectorStoreRetriever #FDF5E6 {
+    ' Produced by VectorStore.as_retriever()
+    -vectorstore: VectorStore
+    -search_type: str
+    -search_kwargs: Dict
+    +_get_relevant_documents()
+  }
+}
+
+VectorStore <|-- InMemoryVectorStore
+VectorStore <|-- Chroma
+VectorStore <|-- FAISS
+VectorStore <|-- Pinecone
+VectorStore <|-- Weaviate
+VectorStore <|-- Qdrant
+BaseRetriever <|-- VectorStoreRetriever
+VectorStoreRetriever o-- VectorStore
+
+' =============================================================================
+' COMMUNITY: DOCUMENT LOADERS & SPLITTERS
+' =============================================================================
+package "langchain-community - Document Processing" #FDF5E6 {
+
+  abstract class BaseDocumentLoader #FDF5E6 {
+    ' load_and_split() is DEPRECATED.
+    ' Use loader.load() then splitter.split_documents()
+    {abstract} +load(): List[Document]
+    +lazy_load(): Iterator[Document]
+  }
+
+  class TextLoader #FDF5E6 {
+    -file_path: str
+  }
+
+  class PyPDFLoader #FDF5E6 {
+    -file_path: str
+  }
+
+  class CSVLoader #FDF5E6 {
+    -file_path: str
+  }
+
+  class WebBaseLoader #FDF5E6 {
+    -web_paths: List[str]
+  }
+
+  class DirectoryLoader #FDF5E6 {
+    -path: str
+    -glob: str
+  }
+
+  class UnstructuredFileLoader #FDF5E6 {
+    -file_path: str
+  }
+
+  abstract class TextSplitter #FDF5E6 {
+    -chunk_size: int
+    -chunk_overlap: int
+    {abstract} +split_text(text): List[str]
+    +split_documents(docs): List[Document]
+    +create_documents(texts): List[Document]
+  }
+
+  class RecursiveCharacterTextSplitter #FDF5E6 {
+    -separators: List[str]
+  }
+
+  class CharacterTextSplitter #FDF5E6 {
+    -separator: str
+  }
+
+  class TokenTextSplitter #FDF5E6 {
+    -encoding_name: str
+  }
+}
+
+BaseDocumentLoader <|-- TextLoader
+BaseDocumentLoader <|-- PyPDFLoader
+BaseDocumentLoader <|-- CSVLoader
+BaseDocumentLoader <|-- WebBaseLoader
+BaseDocumentLoader <|-- DirectoryLoader
+BaseDocumentLoader <|-- UnstructuredFileLoader
+BaseDocumentLoader ..> Document : produces
+
+TextSplitter <|-- RecursiveCharacterTextSplitter
+TextSplitter <|-- CharacterTextSplitter
+TextSplitter <|-- TokenTextSplitter
+TextSplitter ..> Document : splits/produces
+
+' =============================================================================
+' LANGCHAIN-CORE: CALLBACKS
+' =============================================================================
+package "langchain-core - Callbacks" #E8F4FD {
+
+  abstract class BaseCallbackHandler #E8F4FD {
+    +on_llm_start()
+    +on_llm_new_token()
+    +on_llm_end()
+    +on_llm_error()
+    +on_chain_start()
+    +on_chain_end()
+    +on_tool_start()
+    +on_tool_end()
+    +on_agent_action()
+    +on_agent_finish()
+  }
+
+  class StdOutCallbackHandler #E8F4FD {
+    +on_llm_start()
+    +on_chain_start()
+  }
+
+  class StreamingStdOutCallbackHandler #E8F4FD {
+    +on_llm_new_token()
+  }
+}
+
+BaseCallbackHandler <|-- StdOutCallbackHandler
+BaseCallbackHandler <|-- StreamingStdOutCallbackHandler
+Runnable ..> RunnableConfig      : configured by
+Runnable ..> BaseCallbackHandler : notifies
+
+' =============================================================================
+' LANGCHAIN-CORE: CHAT MESSAGE HISTORY
+' =============================================================================
+package "langchain-core - Chat Message History" #E8F4FD {
+
+  abstract class BaseChatMessageHistory #E8F4FD {
+    ' Append-only message log.
+    ' Used by RunnableWithMessageHistory for LCEL chains.
+    {abstract} +add_message(message: BaseMessage)
+    {abstract} +messages: List[BaseMessage]
+    +add_messages(messages)
+    +aadd_messages(messages)
+    +clear()
+  }
+
+  class ChatMessageHistory #E8F4FD {
+    ' In-memory implementation
+    -messages: List[BaseMessage]
+    +add_message()
+    +clear()
+  }
+}
+
+BaseChatMessageHistory <|-- ChatMessageHistory
+BaseChatMessageHistory "1" o-- "0..*" BaseMessage : stores
+RunnableWithMessageHistory o-- BaseChatMessageHistory : per-session store
+
+' =============================================================================
+' LANGCHAIN: TOOLKITS
+' =============================================================================
+package "langchain - Toolkits" #F0FFF0 {
+
+  abstract class BaseToolkit #F0FFF0 {
+    {abstract} +get_tools(): List[BaseTool]
+  }
+
+  class SQLDatabaseToolkit #F0FFF0 {
+    -db: SQLDatabase
+    -llm: BaseLanguageModel
+    +get_tools()
+  }
+
+  class VectorStoreToolkit #F0FFF0 {
+    -vectorstore_info: VectorStoreInfo
+    +get_tools()
+  }
+
+  class FileManagementToolkit #F0FFF0 {
+    -root_dir: str
+    +get_tools()
+  }
+
+  class JsonToolkit #F0FFF0 {
+    -spec: JsonSpec
+    +get_tools()
+  }
+}
+
+BaseToolkit <|-- SQLDatabaseToolkit
+BaseToolkit <|-- VectorStoreToolkit
+BaseToolkit <|-- FileManagementToolkit
+BaseToolkit <|-- JsonToolkit
+BaseToolkit ..> BaseTool : produces
+
+' =============================================================================
+' LANGCHAIN 1.0: MIDDLEWARE SUPPORT TYPES
+' =============================================================================
+package "langchain 1.0 - Middleware Support Types" #FFF0E8 {
+
+  class AgentState #FFF0E8 {
+    ' from langchain.agents.middleware import AgentState
+    ' TypedDict. Received by all node-style hook functions.
+    ' Extend by subclassing to add custom fields that
+    ' persist across the agent execution lifecycle.
+    '   class MyState(AgentState):
+    '     call_count: NotRequired[int]
+    -messages: List[BaseMessage]
+  }
+
+  class ModelRequest #FFF0E8 {
+    ' from langchain.agents.middleware import ModelRequest
+    ' Passed to wrap_model_call hooks. Read-only.
+    ' Mutate via .override() to produce a new request.
+    -messages: List[BaseMessage]
+    -system_message: SystemMessage
+    -tools: List[BaseTool]
+    -state: AgentState
+    -runtime: Runtime
+    +override(model, tools, system_message): ModelRequest
+    ' system_message is ALWAYS a SystemMessage object.
+    ' Use system_message.content_blocks to access as list.
+  }
+
+  class ModelResponse #FFF0E8 {
+    ' from langchain.agents.middleware import ModelResponse
+    ' Returned from / passed to wrap_model_call handler.
+    -message: AIMessage
+  }
+
+  class ToolCallRequest #FFF0E8 {
+    ' from langchain.tools.tool_node import ToolCallRequest
+    ' Passed to wrap_tool_call hooks.
+    -tool_call: ToolCall
+    -state: AgentState
+    -runtime: Runtime
+  }
+
+  class hook_config_decorator <<(F,#FF8800)>> #FFF0E8 {
+    ' @hook_config from langchain.agents.middleware
+    ' Required when a hook uses jump_to routing.
+    '
+    ' @hook_config(can_jump_to=["end", "tools"])
+    ' def before_model(state, runtime): ...
+    '
+    ' class MyMW(AgentMiddleware):
+    '   @hook_config(can_jump_to=["end"])
+    '   def after_model(self, state, runtime): ...
+    +can_jump_to: List[str]
+  }
+
+  note as JumpNote
+    Agent jump system - short-circuit the loop:
+    Any node-style hook can return "jump_to" to
+    redirect execution:
+      return {
+        "messages": [...],
+        "jump_to": "end"
+      }
+    Valid targets:
+      "end"   -> skip to after_agent (or END node)
+      "tools" -> jump to tools node
+      "model" -> jump to model node
+    The hook MUST declare can_jump_to via hook_config.
+  end note
+}
+
+AgentState ..> BaseMessage     : holds list of
+ModelRequest o-- AgentState    : carries
+ModelRequest o-- SystemMessage : system_message field
+ToolCallRequest o-- ToolCall   : carries
+
+' =============================================================================
+' LANGCHAIN 1.0: AGENT MIDDLEWARE
+' =============================================================================
+package "langchain 1.0 - Agent Middleware" #F0FFF0 {
+
+  abstract class AgentMiddleware #F0FFF0 {
+    ' from langchain.agents.middleware import AgentMiddleware
+    '
+    ' Override any combination of the 6 node-style hooks
+    ' and 2 wrap-style hooks. All are OPTIONAL.
+    '
+    ' NODE-STYLE HOOKS (run at fixed points sequentially):
+    '   Signature: (self, state: AgentState, runtime: Runtime)
+    '   Return:    dict[str, Any] or None
+    '   before_* -> first-to-last in middleware list
+    '   after_*  -> last-to-first (reverse order)
+    '
+    ' WRAP-STYLE HOOKS (nested call stack):
+    '   You call handler(request) yourself.
+    '   Can retry, short-circuit, or transform.
+    '   First middleware wraps all others.
+    '
+    ' Set state_schema to extend graph state.
+    +state_schema: Type
+    +before_agent(state: AgentState, runtime: Runtime): dict
+    +before_model(state: AgentState, runtime: Runtime): dict
+    +after_model(state: AgentState, runtime: Runtime): dict
+    +after_agent(state: AgentState, runtime: Runtime): dict
+    +wrap_model_call(request: ModelRequest, handler: Callable): ModelResponse
+    +wrap_tool_call(request: ToolCallRequest, handler: Callable): ToolMessage
+  }
+
+  note as HookDecoratorsNote
+    DECORATOR-BASED MIDDLEWARE (single-hook, no subclass):
+    from langchain.agents.middleware import (
+      before_agent, before_model,
+      after_model,  after_agent,
+      wrap_model_call, wrap_tool_call,
+      dynamic_prompt,
+    )
+
+    @before_model(can_jump_to=["end"])
+    def check_limit(state: AgentState, runtime):
+        if len(state["messages"]) >= 50:
+            return {"jump_to": "end"}
+        return None
+
+    @wrap_model_call
+    def retry(request: ModelRequest, handler):
+        for i in range(3):
+            try: return handler(request)
+            except: pass
+
+    @dynamic_prompt
+    def add_ctx(state: AgentState, runtime) -> str:
+        return f"User: {runtime.context.user_id}"
+
+    Decorators and class instances can be mixed
+    freely in the middleware=[...] list passed to
+    create_agent().
+  end note
+
+  class SummarizationMiddleware #F0FFF0 {
+    ' Compresses old conversation history when approaching
+    ' token limits, preserving recent messages.
+    ' Hook used: before_model (node-style)
+    -model: str or BaseChatModel
+    -trigger: ContextSize or List[ContextSize]
+    ' e.g. ("tokens", 4000) or ("fraction", 0.8)
+    ' Single condition = AND logic; list = OR logic
+    -keep: ContextSize
+    ' e.g. ("messages", 20) or ("fraction", 0.3)
+    ' Exactly one property: fraction or tokens or messages
+    -token_counter: Callable
+    -summary_prompt: str
+    -trim_tokens_to_summarize: int
+    -summary_prefix: str
+  }
+
+  class HumanInTheLoopMiddleware #F0FFF0 {
+    ' Pauses agent before tool calls for human approval,
+    ' editing, or rejection. Uses interrupt() internally.
+    ' Requires a checkpointer on create_agent().
+    ' Hook used: wrap_tool_call (wrap-style)
+    -interrupt_on: Dict[str, Dict or bool]
+    ' Keys: tool names
+    ' False = never interrupt this tool
+    ' Dict  = {"allowed_decisions": ["approve","edit","reject"]}
+  }
+
+  class ModelCallLimitMiddleware #F0FFF0 {
+    ' Limits total model API calls.
+    ' Hook used: before_model (node-style)
+    -thread_limit: int
+    -run_limit: int
+    -exit_behavior: str
+    ' "end" = graceful termination
+    ' "error" = raise exception
+  }
+
+  class ToolCallLimitMiddleware #F0FFF0 {
+    ' Limits tool calls, globally or per named tool.
+    ' Hook used: wrap_tool_call (wrap-style)
+    -tool_name: str
+    ' None = applies to ALL tools globally
+    -thread_limit: int
+    -run_limit: int
+    -exit_behavior: str
+    ' "continue" (default) or "error" or "end"
+  }
+
+  class ModelFallbackMiddleware #F0FFF0 {
+    ' Falls back to alternate models on failure.
+    ' Hook used: wrap_model_call (wrap-style)
+    ' Constructor takes positional fallback models:
+    '   ModelFallbackMiddleware("gpt-4o-mini", "claude-...")
+    -fallback_models: List[str or BaseChatModel]
+  }
+
+  class PIIMiddleware #F0FFF0 {
+    ' Detects and handles PII in messages.
+    ' NOTE: class is PIIMiddleware not PIIRedactionMiddleware
+    ' Hook used: before_model + after_model (node-style)
+    -pii_type: str
+    ' "email" or "credit_card" or "ip" or custom name
+    -strategy: str
+    ' "block" or "redact" or "mask" or "hash"
+    -detector: Callable or str
+    ' custom regex pattern or detection function
+    -apply_to_input: bool
+    -apply_to_output: bool
+    -apply_to_tool_results: bool
+  }
+
+  class TodoListMiddleware #F0FFF0 {
+    ' Injects a write_todos planning tool + system prompt.
+    ' Hook used: before_agent (node-style)
+    -system_prompt: str
+    -tool_description: str
+  }
+
+  class LLMToolSelectorMiddleware #F0FFF0 {
+    ' Uses a secondary LLM to select relevant tool subset
+    ' before the main model call. Reduces token usage.
+    ' Hook used: wrap_model_call (wrap-style)
+    -model: str or BaseChatModel
+    ' defaults to agent model if None
+    -system_prompt: str
+    -max_tools: int
+    -always_include: List[str]
+  }
+
+  class ToolRetryMiddleware #F0FFF0 {
+    ' Retries failed tool calls with exponential backoff.
+    ' Hook used: wrap_tool_call (wrap-style)
+    -max_retries: int
+    ' default 2 (3 total attempts)
+    -tools: List[BaseTool or str]
+    ' None = apply to all tools
+    -retry_on: tuple or Callable
+    ' exception types to retry on
+    -on_failure: str or Callable
+    ' "return_message" or "raise"
+    -backoff_factor: float
+    ' default 2.0
+    -initial_delay: float
+    ' default 1.0 seconds
+    -max_delay: float
+    ' default 60.0 seconds
+    -jitter: bool
+    ' +-25 percent random variation
+  }
+
+  class ModelRetryMiddleware #F0FFF0 {
+    ' Retries failed model calls with exponential backoff.
+    ' Hook used: wrap_model_call (wrap-style)
+    -max_retries: int
+    -retry_on: tuple or Callable
+    -on_failure: str or Callable
+    ' "continue" (default) or "error"
+    -backoff_factor: float
+    -initial_delay: float
+    -max_delay: float
+    -jitter: bool
+  }
+
+  class LLMToolEmulator #F0FFF0 {
+    ' Replaces real tool execution with LLM-generated
+    ' responses. For testing/prototyping only.
+    ' Hook used: wrap_tool_call (wrap-style)
+    -tools: List[str or BaseTool]
+    ' None = emulate ALL tools
+    -model: str or BaseChatModel
+    ' defaults to agent model
+  }
+
+  class ContextEditingMiddleware #F0FFF0 {
+    ' Clears old tool outputs when token limits reached.
+    ' Hook used: before_model (node-style)
+    -edits: List[ContextEdit]
+    -token_count_method: str
+    ' "approximate" (default) or "model"
+  }
+
+  class ClearToolUsesEdit #F0FFF0 {
+    ' Strategy used inside ContextEditingMiddleware.
+    ' Clears old ToolMessage content above a token count.
+    -trigger: int
+    ' token threshold that activates clearing
+    -keep: int
+    ' number of most recent tool results to preserve
+    -clear_at_least: int
+    ' minimum tokens to reclaim; 0 = as needed
+    -clear_tool_inputs: bool
+    ' also clear AIMessage tool_call args
+    -exclude_tools: List[str]
+    -placeholder: str
+    ' replaces cleared content; default "[cleared]"
+  }
+
+  class ShellToolMiddleware #F0FFF0 {
+    ' Provides a persistent shell session as a tool.
+    ' Hook used: before_agent + after_agent (node-style)
+    ' WARNING: use appropriate execution policy.
+    ' NOTE: does NOT support interrupt() (HITL).
+    -workspace_root: str
+    -startup_commands: List[str]
+    -shutdown_commands: List[str]
+    -execution_policy: BaseExecutionPolicy
+    -redaction_rules: List[RedactionRule]
+    -tool_description: str
+    -shell_command: str
+    ' default /bin/bash
+    -env: Dict
+  }
+
+  class BaseExecutionPolicy #F0FFF0 {
+    ' Abstract base for ShellToolMiddleware policies.
+    ' Concrete subclasses:
+    '   HostExecutionPolicy   - full host access (default)
+    '   DockerExecutionPolicy - isolated Docker container
+    '     field: image: str
+    '     field: command_timeout: float
+    '   CodexSandboxExecutionPolicy - Codex CLI sandbox
+  }
+
+  class FilesystemFileSearchMiddleware #F0FFF0 {
+    ' Adds glob_search and grep_search tools to the agent.
+    ' Hook used: before_agent (node-style)
+    -root_path: str
+    ' all searches are relative to this path
+    -use_ripgrep: bool
+    ' default True; falls back to Python regex if unavailable
+    -max_file_size_mb: int
+    ' default 10; files larger than this are skipped
+  }
+
+  note as ProviderMWNote
+    Provider-specific middleware (separate packages):
+
+    Anthropic (langchain_anthropic.middleware):
+      PromptCachingMiddleware  - cache large system prompts
+      BashToolMiddleware       - computer use bash tool
+      TextEditorMiddleware     - computer use text editor
+      MemoryMiddleware         - cross-thread memory
+      FileSearchMiddleware     - file search via Claude
+
+    OpenAI (langchain_openai.middleware):
+      ModerationMiddleware     - OpenAI content moderation API
+  end note
+}
+
+AgentMiddleware <|-- SummarizationMiddleware
+AgentMiddleware <|-- HumanInTheLoopMiddleware
+AgentMiddleware <|-- ModelCallLimitMiddleware
+AgentMiddleware <|-- ToolCallLimitMiddleware
+AgentMiddleware <|-- ModelFallbackMiddleware
+AgentMiddleware <|-- PIIMiddleware
+AgentMiddleware <|-- TodoListMiddleware
+AgentMiddleware <|-- LLMToolSelectorMiddleware
+AgentMiddleware <|-- ToolRetryMiddleware
+AgentMiddleware <|-- ModelRetryMiddleware
+AgentMiddleware <|-- LLMToolEmulator
+AgentMiddleware <|-- ContextEditingMiddleware
+AgentMiddleware <|-- ShellToolMiddleware
+AgentMiddleware <|-- FilesystemFileSearchMiddleware
+
+ContextEditingMiddleware "1" o-- "1..*" ClearToolUsesEdit : uses
+ShellToolMiddleware o-- BaseExecutionPolicy               : uses
+LLMToolSelectorMiddleware o-- BaseChatModel               : selector model
+SummarizationMiddleware o-- BaseChatModel                 : summary model
+ModelFallbackMiddleware o-- BaseChatModel                 : fallback models
+
+AgentMiddleware ..> AgentState      : receives in node hooks
+AgentMiddleware ..> ModelRequest    : receives in wrap_model_call
+AgentMiddleware ..> ToolCallRequest : receives in wrap_tool_call
+
+' =============================================================================
+' LANGCHAIN 1.0: create_agent
+' =============================================================================
+package "langchain 1.0 - Agent Factory" #F0FFF0 {
+
+  class create_agent <<(F,#00AA00)>> #F0FFF0 {
+    ' from langchain.agents import create_agent
+    ' High-level wrapper around create_react_agent().
+    +model: str or BaseChatModel
+    +tools: List[BaseTool]
+    +system_prompt: str or SystemMessage
+    +middleware: List[AgentMiddleware or decorated_fn]
+    +response_format: Type[BaseModel]
+    +checkpointer: BaseCheckpointer
+    ' required when using HumanInTheLoopMiddleware
+    +store: BaseStore
+    +interrupt_before: List[str]
+    +interrupt_after: List[str]
+    ..returns..
+    CompiledStateGraph
+  }
+}
+
+create_agent ..> BaseChatModel      : uses
+create_agent ..> BaseTool           : uses
+create_agent ..> AgentMiddleware    : uses
+create_agent ..> BaseCheckpointer   : uses
+create_agent ..> BaseStore          : uses
+create_agent ..> CompiledStateGraph : returns
+
+note bottom of create_agent
+  PRIMARY high-level agent API in LangChain 1.0.
+  Thin wrapper around create_react_agent() (LangGraph).
+
+  agent = create_agent(
+    model="anthropic:claude-sonnet-4-5-20250929",
+    tools=[search],
+    checkpointer=InMemorySaver(),
+    middleware=[
+      SummarizationMiddleware(
+        model="gpt-4o-mini",
+        trigger=("tokens", 4000),
+        keep=("messages", 20)),
+      HumanInTheLoopMiddleware(
+        interrupt_on={"send_email": {
+          "allowed_decisions": ["approve","edit","reject"]}}),
+    ],
+  )
+  result = agent.invoke({"messages": [...]})
+end note
+
+' =============================================================================
+' LANGGRAPH 1.0: TYPES & PRIMITIVES
+' =============================================================================
+package "langgraph 1.0 - Types and Primitives" #FFE8E8 {
+
+  class StartEnd #FFE8E8 {
+    ' from langgraph.graph import START, END
+    ' Sentinel constants replacing deprecated
+    ' set_entry_point() and set_finish_point().
+    ' Usage:
+    '   graph.add_edge(START, "first_node")
+    '   graph.add_edge("last_node", END)
+  }
+
+  class Command #FFE8E8 {
+    ' from langgraph.types import Command
+    ' Combines state update + routing in one node return.
+    ' Also the mechanism to resume after interrupt().
+    -update: Dict
+    ' state keys to update
+    -goto: str or List[str]
+    ' node(s) to route to next
+    -graph: str
+    ' Command.PARENT = navigate to parent graph
+    -resume: Any
+    ' resume value for interrupt()
+  }
+
+  class Send #FFE8E8 {
+    ' from langgraph.types import Send
+    ' Fan out to multiple parallel nodes with different state.
+    ' Returned from conditional edges for map-reduce.
+    -node: str
+    -state: Dict
+    ' Usage:
+    '   def fan_out(state):
+    '     return [Send("worker", {"item": x})
+    '             for x in state["items"]]
+  }
+
+  class interrupt_fn #FFE8E8 {
+    ' interrupt() from langgraph.types
+    ' Pauses graph execution, saves via checkpointer.
+    ' Resume with Command(resume=value).
+    ' DO NOT wrap in bare try/except.
+    ' Side effects before interrupt() must be idempotent.
+    +value: Any
+    ' JSON-serializable payload surfaced to caller
+  }
+
+  class add_messages_fn #FFE8E8 {
+    ' add_messages() from langgraph.graph.message
+    ' Reducer for messages key in State:
+    '   - Appends new messages
+    '   - Deduplicates / overwrites by message id
+    '   - Handles RemoveMessage(id=...) deletions
+    '   - Deserializes dict inputs to LangChain Messages
+    ' Usage:
+    '   class State(TypedDict):
+    '     messages: Annotated[list[AnyMessage], add_messages]
+  }
+
+  class CachePolicy #FFE8E8 {
+    ' from langgraph.types import CachePolicy
+    ' Attached per-node: add_node(..., cache_policy=cp)
+    ' Graph compiled with: compile(cache=InMemoryCache())
+    -ttl: float
+    ' seconds; None = never expire
+    -key_func: Callable
+    ' default: hash of node input
+  }
+
+  class Overwrite #FFE8E8 {
+    ' from langgraph.types import Overwrite
+    ' Annotated reducer that directly overwrites the key,
+    ' bypassing any other reducer.
+    ' class State(TypedDict):
+    '   counter: Annotated[int, Overwrite]
+  }
+
+  class RemainingSteps #FFE8E8 {
+    ' from langgraph.managed import RemainingSteps
+    ' Auto-populated managed value. Tracks steps left
+    ' before recursion limit (default 1000 in v1.0.6+).
+    ' class State(TypedDict):
+    '   remaining: RemainingSteps
+    ' def node(state):
+    '   if state["remaining"] <= 2:  # wrap up
+  }
+
+  class GraphRecursionError #FFE8E8 {
+    ' from langgraph.errors import GraphRecursionError
+    ' Raised when recursion_limit steps are exceeded.
+    ' Catch externally (reactive) or use RemainingSteps
+    ' to handle proactively inside the graph.
+  }
+}
+
+' =============================================================================
+' LANGGRAPH 1.0: GRAPH RUNTIME
+' =============================================================================
+package "langgraph 1.0 - Graph Runtime" #F5F0FF {
+
+  class StateGraph #F5F0FF {
+    ' from langgraph.graph import StateGraph
+    ' state_schema: TypedDict, dataclass, or Pydantic
+    ' context_schema: optional runtime context type
+    ' DEPRECATED: set_entry_point(), set_finish_point()
+    ' Use add_edge(START,..) / add_edge(..,END) instead.
+    -state_schema: Type
+    -context_schema: Type
+    +add_node(name, fn_or_subgraph, cache_policy)
+    ' fn can be a plain function OR CompiledStateGraph
+    +add_edge(start, end)
+    +add_conditional_edges(source, path_fn, mapping)
+    +compile(checkpointer, store, cache): CompiledStateGraph
+  }
+
+  class MessagesState #F5F0FF {
+    ' from langgraph.graph import MessagesState
+    ' Prebuilt TypedDict state for message-based agents.
+    ' Equivalent to:
+    '   class State(TypedDict):
+    '     messages: Annotated[list[AnyMessage], add_messages]
+    ' Subclass to extend:
+    '   class MyState(MessagesState):
+    '     documents: list[str]
+    ' NOTE: MessageGraph is REMOVED in v1.0.
+    ' Use StateGraph(MessagesState) instead.
+    -messages: Annotated[list, add_messages]
+  }
+
+  class CompiledStateGraph #F5F0FF {
+    ' Fully implements Runnable protocol.
+    +invoke(input, config, context, recursion_limit)
+    +stream(input, config, stream_mode)
+    ' stream_mode: "values" or "updates" or "debug"
+    '              or "messages" or "custom"
+    +batch(inputs, config)
+    +astream_events(input, version)
+    +get_state(config): StateSnapshot
+    +get_state_history(config): Iterator[StateSnapshot]
+    +update_state(config, values)
+  }
+
+  class StateSnapshot #F5F0FF {
+    ' Return type of get_state() and get_state_history().
+    -values: Dict
+    ' current state channel values
+    -next: tuple
+    ' node names to execute next
+    -config: RunnableConfig
+    ' includes checkpoint_id for time-travel
+    -metadata: Dict
+    -created_at: str
+    -parent_config: RunnableConfig
+    -tasks: tuple
+    ' contains interrupt payloads if graph is paused
+  }
+
+  class ToolNode #F5F0FF {
+    ' from langgraph.prebuilt import ToolNode
+    ' Prebuilt graph node that executes tool calls.
+    ' Reads AIMessage.tool_calls, runs tools in parallel,
+    ' returns ToolMessages to state.
+    -tools: List[BaseTool]
+    -handle_tool_errors: bool or str or Callable
+    ' True  = catch errors, return error ToolMessage
+    ' False = let errors propagate
+    ' str   = static error message
+    +invoke(state, config)
+  }
+
+  class tools_condition_fn #F5F0FF {
+    ' tools_condition from langgraph.prebuilt
+    ' Standard conditional edge routing function.
+    ' Returns "tools" if last message has tool_calls,
+    ' else returns END.
+    ' graph.add_conditional_edges("agent", tools_condition)
+  }
+
+  class Runtime #F5F0FF {
+    ' from langgraph.runtime import Runtime
+    ' Injected as 3rd arg to node functions when
+    ' context_schema is set on the StateGraph.
+    +context: ContextSchema
+    +store: BaseStore
+    +stream_writer: Callable
+  }
+
+  abstract class BaseCheckpointer #F5F0FF {
+    ' from langgraph.checkpoint.base
+    ' Thread-level (per-conversation) memory.
+    ' Stores complete graph state snapshots per thread.
+    ' thread_id MUST be in configurable.
+    ' Add checkpoint_id for time-travel.
+    {abstract} +get(config): Checkpoint
+    {abstract} +put(config, checkpoint, metadata)
+    +aget(config)
+    +aput(config, checkpoint, metadata)
+    +list(config): Iterator[CheckpointTuple]
+  }
+
+  class InMemorySaver #F5F0FF {
+    ' from langgraph.checkpoint.memory import InMemorySaver
+    ' (was MemorySaver in older versions -- now renamed)
+    ' In-process only; for development / testing.
+    -storage: Dict
+  }
+
+  class SqliteSaver #F5F0FF {
+    ' from langgraph.checkpoint.sqlite
+    ' pip install langgraph-checkpoint-sqlite
+    -conn: sqlite3.Connection
+  }
+
+  class PostgresSaver #F5F0FF {
+    ' from langgraph.checkpoint.postgres
+    ' pip install langgraph-checkpoint-postgres
+    -pool: ConnectionPool
+  }
+
+  abstract class BaseStore #F5F0FF {
+    ' from langgraph.store.base
+    ' Cross-thread long-term memory.
+    ' Distinct from BaseCheckpointer (per-thread snapshots).
+    {abstract} +put(namespace, key, value)
+    {abstract} +get(namespace, key)
+    {abstract} +search(namespace_prefix)
+    +delete(namespace, key)
+  }
+
+  class InMemoryStore #F5F0FF {
+    ' from langgraph.store.memory
+    -data: Dict
+  }
+
+  class InMemoryCache #F5F0FF {
+    ' from langgraph.cache.memory import InMemoryCache
+    ' Passed to graph.compile(cache=InMemoryCache()).
+    ' Enables CachePolicy per node.
+  }
+
+  class create_react_agent_LG <<(F,#7B2FBE)>> #F5F0FF {
+    ' create_react_agent from langgraph.prebuilt
+    ' Low-level; called internally by create_agent().
+    +model: BaseChatModel
+    +tools: List[BaseTool]
+    +state_schema: Type
+    +checkpointer: BaseCheckpointer
+    +store: BaseStore
+    +prompt: str or BasePromptTemplate
+    +response_format: Type[BaseModel]
+    ..returns..
+    CompiledStateGraph
+  }
+}
+
+StateGraph --> CompiledStateGraph : compile()
+
+BaseCheckpointer <|-- InMemorySaver
+BaseCheckpointer <|-- SqliteSaver
+BaseCheckpointer <|-- PostgresSaver
+BaseStore <|-- InMemoryStore
+
+Runnable <|-- CompiledStateGraph
+Runnable <|-- ToolNode
+
+Runtime ..> BaseStore : holds ref to
+StateGraph ..> MessagesState : commonly used as state_schema
+CompiledStateGraph ..> StateSnapshot : get_state() returns
+
+ToolNode ..> BaseTool    : executes
+ToolNode ..> ToolMessage : returns
+
+create_react_agent_LG ..> BaseChatModel      : uses
+create_react_agent_LG ..> BaseTool           : uses
+create_react_agent_LG ..> BaseCheckpointer   : uses
+create_react_agent_LG ..> BaseStore          : uses
+create_react_agent_LG ..> CompiledStateGraph : returns
+
+note right of StateGraph
+  Node function signatures (all optional args):
+    def my_node(
+      state: State,
+      config: RunnableConfig,
+      runtime: Runtime[Ctx],
+    ): ...
+  Subgraph as a node:
+    graph.add_node("sub", compiled_subgraph)
+  Node caching:
+    graph.add_node("n", fn,
+      cache_policy=CachePolicy(ttl=60))
+    graph.compile(cache=InMemoryCache())
+end note
+
+note right of BaseCheckpointer
+  Thread-level per-conversation memory.
+  thread_id required in configurable dict.
+  For time-travel also pass checkpoint_id:
+    {"configurable": {
+      "thread_id": "1",
+      "checkpoint_id": "abc123"}}
+  InMemorySaver is the correct v1.0 name.
+  (MemorySaver was the old name.)
+  SqliteSaver and PostgresSaver live in
+  SEPARATE pip packages.
+end note
+
+' =============================================================================
+' LANGGRAPH 1.0: FUNCTIONAL API
+' =============================================================================
+package "langgraph 1.0 - Functional API" #F5F0FF {
+
+  class entrypoint_decorator <<(F,#7B2FBE)>> #F5F0FF {
+    ' @entrypoint from langgraph.func
+    ' Marks a function as a LangGraph entrypoint.
+    ' Provides automatic checkpointing, streaming,
+    ' and interrupt() without an explicit StateGraph.
+    '
+    ' @entrypoint(checkpointer=InMemorySaver())
+    ' def my_agent(input: dict) -> dict:
+    '     result = my_task(input["x"]).result()
+    '     return {"output": result}
+    +checkpointer: BaseCheckpointer
+    +store: BaseStore
+    ..returns..
+    CompiledEntrypoint
+  }
+
+  class task_decorator <<(F,#7B2FBE)>> #F5F0FF {
+    ' @task from langgraph.func
+    ' Marks a function as a LangGraph task.
+    ' Must be called from inside an @entrypoint.
+    ' Returns a Future-like; call .result() to get value.
+    '
+    ' @task
+    ' def my_task(x: int) -> int:
+    '     return x * 2
+    ' result = my_task(5).result()
+    ..returns..
+    Task
+  }
+
+  note as FuncAPINote
+    Functional API vs Graph API:
+
+    Functional API (@entrypoint + @task):
+      Pythonic; plain functions, no state schema,
+      no explicit nodes or edges. Best for
+      linear or simple flows.
+
+    Graph API (StateGraph):
+      Explicit typed State, nodes, edges, reducers.
+      Use when you need conditional routing,
+      parallel branches, subgraphs, or fine-grained
+      state control.
+
+    Both fully support: checkpointing, streaming,
+    interrupt(), human-in-the-loop, and BaseStore.
+  end note
+}
+
+entrypoint_decorator ..> BaseCheckpointer   : uses
+entrypoint_decorator ..> BaseStore          : uses
+entrypoint_decorator ..> CompiledStateGraph : produces internally
+
+@enduml
