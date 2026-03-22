@@ -841,6 +841,11 @@ package "langchain 1.0 - Middleware Support Types" #FFF0E8 {
     -tools: List[BaseTool]
     -state: AgentState
     -runtime: Runtime
+    -model: BaseChatModel
+    -response_format: ResponseFormat
+    -tool_choice: str
+    -model_settings: Dict[str, Any]
+    -system_prompt: str
     +override(model, tools, system_message): ModelRequest
     ' system_message is ALWAYS a SystemMessage object.
     ' Use system_message.content_blocks to access as list.
