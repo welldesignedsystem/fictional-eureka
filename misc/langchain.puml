@@ -1217,18 +1217,22 @@ package "langchain 1.0 - Agent Factory" #F0FFF0 {
   class create_agent <<(F,#00AA00)>> #F0FFF0 {
     ' from langchain.agents import create_agent
     ' High-level wrapper around create_react_agent().
-    +model: str or BaseChatModel
-    +tools: List[BaseTool]
-    +system_prompt: str or SystemMessage
-    +middleware: List[AgentMiddleware or decorated_fn]
-    +response_format: Type[BaseModel]
-    +checkpointer: BaseCheckpointer
-    ' required when using HumanInTheLoopMiddleware
-    +store: BaseStore
-    +interrupt_before: List[str]
-    +interrupt_after: List[str]
+    +model: str | BaseChatModel
+    +tools: Sequence[BaseTool | Callable[..., Any] | dict[str, Any]] | None = None
+    +system_prompt: str | SystemMessage | None = None
+    +middleware: Sequence[AgentMiddleware[StateT_co, ContextT]] = ()
+    +response_format: ResponseFormat[ResponseT] | type[ResponseT] | dict[str, Any] | None = None
+    +state_schema: type[AgentState[ResponseT]] | None = None
+    +context_schema: type[ContextT] | None = None
+    +checkpointer: Checkpointer | None = None
+    +store: BaseStore | None = None
+    +interrupt_before: list[str] | None = None
+    +interrupt_after: list[str] | None = None
+    +debug: bool = False
+    +name: str | None = None
+    +cache: BaseCache[Any] | None = None
     ..returns..
-    CompiledStateGraph
+    CompiledStateGraph[AgentState[ResponseT], ContextT, _InputAgentState, _OutputAgentState[ResponseT]]
   }
 }
 
