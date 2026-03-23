@@ -654,6 +654,9 @@ VectorStoreRetriever o-- VectorStore
 ' =============================================================================
 package "langchain-community - Document Processing" #FDF5E6 {
 
+  ' ---------------------------------------------------------------------------
+  ' BASE LOADER
+  ' ---------------------------------------------------------------------------
   abstract class BaseDocumentLoader #FDF5E6 {
     ' load_and_split() is DEPRECATED.
     ' Use loader.load() then splitter.split_documents()
@@ -661,64 +664,458 @@ package "langchain-community - Document Processing" #FDF5E6 {
     +lazy_load(): Iterator[Document]
   }
 
+  ' ---------------------------------------------------------------------------
+  ' CORE / PLAIN-FILE LOADERS (langchain-community)
+  ' ---------------------------------------------------------------------------
   class TextLoader #FDF5E6 {
+    ' Plain .txt files.
     -file_path: str
-  }
-
-  class PyPDFLoader #FDF5E6 {
-    -file_path: str
+    -encoding: str
   }
 
   class CSVLoader #FDF5E6 {
+    ' CSV files; each row -> Document.
     -file_path: str
+    -csv_args: Dict
+    -source_column: str
   }
 
-  class WebBaseLoader #FDF5E6 {
-    -web_paths: List[str]
+  class JSONLoader #FDF5E6 {
+    ' langchain-community
+    ' Load JSON / JSONL files via a jq schema.
+    ' from langchain_community.document_loaders import JSONLoader
+    -file_path: str
+    -jq_schema: str
+    -content_key: str
+    -text_content: bool
+  }
+
+  class BSHTMLLoader #FDF5E6 {
+    ' langchain-community
+    ' Parses local HTML files with BeautifulSoup.
+    ' from langchain_community.document_loaders import BSHTMLLoader
+    -file_path: str
+    -open_encoding: str
+    -bs_kwargs: Dict
   }
 
   class DirectoryLoader #FDF5E6 {
+    ' Recursively loads files from a directory.
     -path: str
     -glob: str
+    -loader_cls: Type[BaseDocumentLoader]
+    -show_progress: bool
   }
 
   class UnstructuredFileLoader #FDF5E6 {
+    ' Supports 30+ file types via unstructured lib.
+    ' pip install unstructured
+    -file_path: str
+    -mode: str
+  }
+
+  ' ---------------------------------------------------------------------------
+  ' PDF LOADERS
+  ' ---------------------------------------------------------------------------
+  class PyPDFLoader #FDF5E6 {
+    ' langchain-community  (uses pypdf)
+    ' Most common PDF loader; one page per Document.
+    -file_path: str
+    -password: str
+    -extract_images: bool
+  }
+
+  class PyMuPDFLoader #FDF5E6 {
+    ' langchain-community  (uses pymupdf / fitz)
+    ' Fastest pure-Python PDF parser; rich metadata.
+    ' pip install pymupdf
+    -file_path: str
+    -extract_images: bool
+  }
+
+  class PDFPlumberLoader #FDF5E6 {
+    ' langchain-community  (uses pdfplumber)
+    ' Best for tables and precise text layout.
+    ' pip install pdfplumber
+    -file_path: str
+    -text_kwargs: Dict
+  }
+
+  class PDFMinerLoader #FDF5E6 {
+    ' langchain-community  (uses pdfminer.six)
+    ' Fine-grained text extraction; good for scanned docs.
+    ' pip install pdfminer.six
+    -file_path: str
+    -concatenate_pages: bool
+  }
+
+  class PyPDFDirectoryLoader #FDF5E6 {
+    ' langchain-community
+    ' Loads all PDFs in a directory tree.
+    -path: str
+    -glob: str
+    -silent_errors: bool
+    -load_hidden: bool
+  }
+
+  class PyPDFium2Loader #FDF5E6 {
+    ' langchain-community  (uses pypdfium2)
+    ' pip install pypdfium2
     -file_path: str
   }
 
+  ' ---------------------------------------------------------------------------
+  ' WEB LOADERS
+  ' ---------------------------------------------------------------------------
+  class WebBaseLoader #FDF5E6 {
+    ' langchain-community (uses urllib + BeautifulSoup)
+    ' Simple loader for public web pages.
+    -web_paths: List[str]
+    -bs_kwargs: Dict
+    -requests_kwargs: Dict
+  }
+
+  class RecursiveUrlLoader #FDF5E6 {
+    ' langchain-community
+    ' Crawls a root URL and all child links up to max_depth.
+    ' from langchain_community.document_loaders import RecursiveUrlLoader
+    -url: str
+    -max_depth: int
+    -extractor: Callable
+    -exclude_dirs: List[str]
+  }
+
+  class SitemapLoader #FDF5E6 {
+    ' langchain-community
+    ' Loads every URL found in an XML sitemap.
+    ' from langchain_community.document_loaders.sitemap import SitemapLoader
+    -web_path: str
+    -filter_urls: List[str]
+    -parsing_function: Callable
+    -blocksize: int
+  }
+
+  class FirecrawlLoader #FDF5E6 {
+    ' langchain-community  (uses Firecrawl API)
+    ' Crawl + scrape websites into clean markdown.
+    ' pip install firecrawl-py
+    -url: str
+    -api_key: str
+    -mode: str
+  }
+
+  class WikipediaLoader #FDF5E6 {
+    ' langchain-community
+    ' Fetches Wikipedia article summaries.
+    ' pip install wikipedia
+    -query: str
+    -lang: str
+    -load_max_docs: int
+    -doc_content_chars_max: int
+  }
+
+  class ArxivLoader #FDF5E6 {
+    ' langchain-community
+    ' Retrieves papers from the arXiv API.
+    ' pip install arxiv
+    -query: str
+    -load_max_docs: int
+    -load_all_available_meta: bool
+  }
+
+  class YoutubeTranscriptLoader #FDF5E6 {
+    ' langchain-community
+    ' Fetches auto-generated or manual transcripts.
+    ' pip install youtube-transcript-api
+    ' from langchain_community.document_loaders import YoutubeLoader
+    -video_ids: List[str]
+    -language: str
+    -translation: str
+  }
+
+  ' ---------------------------------------------------------------------------
+  ' CLOUD / STORAGE LOADERS
+  ' ---------------------------------------------------------------------------
+  class S3FileLoader #FDF5E6 {
+    ' langchain-community  (uses boto3)
+    ' Loads a single file from an AWS S3 bucket.
+    ' from langchain_community.document_loaders import S3FileLoader
+    -bucket: str
+    -key: str
+    -region_name: str
+  }
+
+  class S3DirectoryLoader #FDF5E6 {
+    ' langchain-community  (uses boto3)
+    ' Loads all files under a prefix in an S3 bucket.
+    ' from langchain_community.document_loaders import S3DirectoryLoader
+    -bucket: str
+    -prefix: str
+    -region_name: str
+  }
+
+  class GoogleDriveLoader #FDF5E6 {
+    ' langchain-google-community
+    ' Loads Google Docs / Sheets / Slides from Drive.
+    ' pip install langchain-google-community[drive]
+    -folder_id: str
+    -document_ids: List[str]
+    -service_account_key: str
+    -recursive: bool
+  }
+
+  class AzureBlobStorageLoader #FDF5E6 {
+    ' langchain-community
+    ' Loads files from Azure Blob Storage.
+    -conn_str: str
+    -container: str
+    -blob_name: str
+  }
+
+  ' ---------------------------------------------------------------------------
+  ' PRODUCTIVITY / KNOWLEDGE-BASE LOADERS
+  ' ---------------------------------------------------------------------------
+  class NotionDirectoryLoader #FDF5E6 {
+    ' langchain-community
+    ' Loads exported Notion workspace markdown dumps.
+    -path: str
+  }
+
+  class ConfluenceLoader #FDF5E6 {
+    ' langchain-community  (uses atlassian-python-api)
+    ' Loads pages from a Confluence space.
+    ' pip install atlassian-python-api
+    -url: str
+    -username: str
+    -api_key: str
+    -space_key: str
+    -page_ids: List[str]
+    -include_attachments: bool
+  }
+
+  class SlackDirectoryLoader #FDF5E6 {
+    ' langchain-community
+    ' Loads messages from a Slack export zip.
+    -zip_path: str
+    -workspace_url: str
+  }
+
+  class GithubFileLoader #FDF5E6 {
+    ' langchain-community  (uses PyGitHub)
+    ' Loads files from a GitHub repository.
+    ' pip install PyGitHub
+    -repo: str
+    -access_token: str
+    -file_filter: Callable
+    -branch: str
+  }
+
+  class UnstructuredMarkdownLoader #FDF5E6 {
+    ' langchain-community
+    ' Parses Markdown files via unstructured.
+    -file_path: str
+    -mode: str
+  }
+
+  ' ---------------------------------------------------------------------------
+  ' TEXT SPLITTERS (langchain-text-splitters)
+  ' pip install langchain-text-splitters
+  ' ---------------------------------------------------------------------------
   abstract class TextSplitter #FDF5E6 {
     -chunk_size: int
     -chunk_overlap: int
+    -length_function: Callable
+    -keep_separator: bool
     {abstract} +split_text(text): List[str]
     +split_documents(docs): List[Document]
     +create_documents(texts): List[Document]
   }
 
+  ' --- Text-structure-based (recommended default) ---
   class RecursiveCharacterTextSplitter #FDF5E6 {
+    ' RECOMMENDED default splitter.
+    ' Tries paragraphs -> sentences -> words hierarchically.
+    ' from langchain_text_splitters import RecursiveCharacterTextSplitter
     -separators: List[str]
+    ' defaults: ["\n\n", "\n", " ", ""]
+    +from_language(language: Language): RecursiveCharacterTextSplitter
+    ' Language enum: PYTHON, JS, TS, MARKDOWN, HTML,
+    '   LATEX, SOL, RUST, GO, JAVA, CPP, C, SCALA,
+    '   RUBY, RST, PROTO, COBOL, ELIXIR, KOTLIN, LUA
   }
 
+  ' --- Length-based splitters ---
   class CharacterTextSplitter #FDF5E6 {
+    ' from langchain_text_splitters import CharacterTextSplitter
+    ' Splits on a single separator (default: "\n\n").
     -separator: str
+    +from_tiktoken_encoder(encoding_name, chunk_size)
+    +from_huggingface_tokenizer(tokenizer)
   }
 
   class TokenTextSplitter #FDF5E6 {
+    ' from langchain_text_splitters import TokenTextSplitter
+    ' Splits based on token count via tiktoken.
+    ' pip install tiktoken
     -encoding_name: str
+    -model_name: str
+    -allowed_special: Set
+    -disallowed_special: Union
   }
+
+  class SentenceTransformersTokenTextSplitter #FDF5E6 {
+    ' from langchain_text_splitters import SentenceTransformersTokenTextSplitter
+    ' Counts tokens using a SentenceTransformer tokenizer.
+    ' pip install sentence-transformers
+    -model_name: str
+    -tokens_per_chunk: int
+    -add_start_index: bool
+  }
+
+  ' --- Document-structure-based splitters ---
+  class MarkdownHeaderTextSplitter #FDF5E6 {
+    ' from langchain_text_splitters import MarkdownHeaderTextSplitter
+    ' Splits on Markdown headings (#, ##, ###, etc.)
+    ' and propagates header text into chunk metadata.
+    ' Does NOT inherit TextSplitter; standalone class.
+    -headers_to_split_on: List[Tuple[str, str]]
+    -strip_headers: bool
+    -return_each_line: bool
+    +split_text(text): List[Document]
+  }
+
+  class HTMLHeaderTextSplitter #FDF5E6 {
+    ' from langchain_text_splitters import HTMLHeaderTextSplitter
+    ' Splits HTML by heading tags (h1..h4) and stores
+    ' heading hierarchy in Document metadata.
+    ' Does NOT inherit TextSplitter; standalone class.
+    -headers_to_split_on: List[Tuple[str, str]]
+    -return_each_element: bool
+    +split_text(text): List[Document]
+    +split_text_from_url(url): List[Document]
+    +split_text_from_file(file): List[Document]
+  }
+
+  class RecursiveJsonSplitter #FDF5E6 {
+    ' from langchain_text_splitters import RecursiveJsonSplitter
+    ' Recursively splits large JSON objects / arrays
+    ' into smaller chunks that fit within context windows.
+    ' Does NOT inherit TextSplitter; standalone class.
+    -max_chunk_size: int
+    -min_chunk_size: int
+    +split_json(json_data): List[Dict]
+    +split_text(json_data, convert_lists): List[str]
+    +create_documents(texts, metadatas): List[Document]
+  }
+
+  class SpacyTextSplitter #FDF5E6 {
+    ' from langchain_text_splitters import SpacyTextSplitter
+    ' Splits text into sentences using spaCy NLP pipeline.
+    ' pip install spacy && python -m spacy download en_core_web_sm
+    -pipeline: str
+    -max_length: int
+  }
+
+  class NLTKTextSplitter #FDF5E6 {
+    ' from langchain_text_splitters import NLTKTextSplitter
+    ' Splits text into sentences using NLTK punkt tokenizer.
+    ' pip install nltk
+    -separator: str
+    -language: str
+  }
+
+  note as LoaderNote
+    Document Loader categories (langchain-community):
+      Core files : TextLoader, CSVLoader, JSONLoader,
+                   BSHTMLLoader, UnstructuredFileLoader,
+                   DirectoryLoader
+      PDFs       : PyPDFLoader (default), PyMuPDFLoader
+                   (fast), PDFPlumberLoader (tables),
+                   PDFMinerLoader, PyPDFDirectoryLoader,
+                   PyPDFium2Loader
+      Web        : WebBaseLoader, RecursiveUrlLoader,
+                   SitemapLoader, FirecrawlLoader,
+                   WikipediaLoader, ArxivLoader,
+                   YoutubeTranscriptLoader
+      Cloud      : S3FileLoader, S3DirectoryLoader,
+                   GoogleDriveLoader,
+                   AzureBlobStorageLoader
+      Productivity: NotionDirectoryLoader,
+                   ConfluenceLoader, SlackDirectoryLoader,
+                   GithubFileLoader,
+                   UnstructuredMarkdownLoader
+    Use load() for small sets; lazy_load() for large ones.
+    load_and_split() is DEPRECATED - call load() then
+    splitter.split_documents() separately.
+  end note
+
+  note as SplitterNote
+    Text Splitter categories (langchain-text-splitters):
+      Text-structure (recommended default):
+        RecursiveCharacterTextSplitter
+          -> use from_language() for source code
+             (Python, JS, TS, Markdown, HTML, Go ...)
+      Length-based:
+        CharacterTextSplitter  (single separator)
+        TokenTextSplitter      (tiktoken)
+        SentenceTransformersTokenTextSplitter
+      Document-structure (standalone, not TextSplitter):
+        MarkdownHeaderTextSplitter  (# / ## / ### headers)
+        HTMLHeaderTextSplitter      (h1..h4 tags)
+        RecursiveJsonSplitter       (JSON objects/arrays)
+      Sentence-level NLP:
+        SpacyTextSplitter  (spaCy pipeline)
+        NLTKTextSplitter   (NLTK punkt)
+    MarkdownHeaderTextSplitter, HTMLHeaderTextSplitter,
+    and RecursiveJsonSplitter are standalone classes and
+    do NOT extend TextSplitter.
+  end note
 }
 
+' Loader inheritance
 BaseDocumentLoader <|-- TextLoader
-BaseDocumentLoader <|-- PyPDFLoader
 BaseDocumentLoader <|-- CSVLoader
-BaseDocumentLoader <|-- WebBaseLoader
+BaseDocumentLoader <|-- JSONLoader
+BaseDocumentLoader <|-- BSHTMLLoader
 BaseDocumentLoader <|-- DirectoryLoader
 BaseDocumentLoader <|-- UnstructuredFileLoader
+BaseDocumentLoader <|-- PyPDFLoader
+BaseDocumentLoader <|-- PyMuPDFLoader
+BaseDocumentLoader <|-- PDFPlumberLoader
+BaseDocumentLoader <|-- PDFMinerLoader
+BaseDocumentLoader <|-- PyPDFDirectoryLoader
+BaseDocumentLoader <|-- PyPDFium2Loader
+BaseDocumentLoader <|-- WebBaseLoader
+BaseDocumentLoader <|-- RecursiveUrlLoader
+BaseDocumentLoader <|-- SitemapLoader
+BaseDocumentLoader <|-- FirecrawlLoader
+BaseDocumentLoader <|-- WikipediaLoader
+BaseDocumentLoader <|-- ArxivLoader
+BaseDocumentLoader <|-- YoutubeTranscriptLoader
+BaseDocumentLoader <|-- S3FileLoader
+BaseDocumentLoader <|-- S3DirectoryLoader
+BaseDocumentLoader <|-- GoogleDriveLoader
+BaseDocumentLoader <|-- AzureBlobStorageLoader
+BaseDocumentLoader <|-- NotionDirectoryLoader
+BaseDocumentLoader <|-- ConfluenceLoader
+BaseDocumentLoader <|-- SlackDirectoryLoader
+BaseDocumentLoader <|-- GithubFileLoader
+BaseDocumentLoader <|-- UnstructuredMarkdownLoader
 BaseDocumentLoader ..> Document : produces
 
+' Splitter inheritance (TextSplitter subclasses)
 TextSplitter <|-- RecursiveCharacterTextSplitter
 TextSplitter <|-- CharacterTextSplitter
 TextSplitter <|-- TokenTextSplitter
+TextSplitter <|-- SentenceTransformersTokenTextSplitter
+TextSplitter <|-- SpacyTextSplitter
+TextSplitter <|-- NLTKTextSplitter
 TextSplitter ..> Document : splits/produces
+
+' Standalone structure-based splitters produce Documents directly
+MarkdownHeaderTextSplitter ..> Document : produces
+HTMLHeaderTextSplitter ..> Document : produces
+RecursiveJsonSplitter ..> Document : produces
 
 ' =============================================================================
 ' LANGCHAIN-CORE: CALLBACKS
