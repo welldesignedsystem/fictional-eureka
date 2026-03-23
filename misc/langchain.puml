@@ -2023,6 +2023,19 @@ package "langgraph 1.0 - Functional API" #F5F0FF {
     ..returns..
     Task
   }
+  note right of ChatGroq
+    <b>⚡ LPU vs GPU</b>
+    Groq uses a Language Processing
+    Unit (LPU), not a GPU.
+
+    **Why it's faster:**
+    • Purpose-built for sequential token
+      generation, not general parallel compute
+    • Zero memory bandwidth bottleneck —
+      weights stay on-chip at all times
+    • Deterministic latency per token,
+      unlike GPU scheduling
+  end note
 
   note as FuncAPINote
     Functional API vs Graph API:
