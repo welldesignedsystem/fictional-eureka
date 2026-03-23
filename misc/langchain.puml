@@ -16,6 +16,7 @@ legend top left
   |<#F5F0FF> Lavend | langgraph 1.0 (graph runtime)                 |
   |<#FFE8E8> Pink   | langgraph 1.0 Types and Primitives            |
   |<#FFF0E8> Orange | langchain 1.0 Middleware support types        |
+  |<#E8FFF5> Mint   | langchain-text-splitters                      |
 endlegend
 
 note as PackageNote
@@ -650,9 +651,9 @@ BaseRetriever <|-- VectorStoreRetriever
 VectorStoreRetriever o-- VectorStore
 
 ' =============================================================================
-' COMMUNITY: DOCUMENT LOADERS & SPLITTERS
+' COMMUNITY: DOCUMENT LOADERS
 ' =============================================================================
-package "langchain-community - Document Processing" #FDF5E6 {
+package "langchain-community - Document Loaders" #FDF5E6 {
 
   ' ---------------------------------------------------------------------------
   ' BASE LOADER
@@ -917,113 +918,6 @@ package "langchain-community - Document Processing" #FDF5E6 {
     -mode: str
   }
 
-  ' ---------------------------------------------------------------------------
-  ' TEXT SPLITTERS (langchain-text-splitters)
-  ' pip install langchain-text-splitters
-  ' ---------------------------------------------------------------------------
-  abstract class TextSplitter #FDF5E6 {
-    -chunk_size: int
-    -chunk_overlap: int
-    -length_function: Callable
-    -keep_separator: bool
-    {abstract} +split_text(text): List[str]
-    +split_documents(docs): List[Document]
-    +create_documents(texts): List[Document]
-  }
-
-  ' --- Text-structure-based (recommended default) ---
-  class RecursiveCharacterTextSplitter #FDF5E6 {
-    ' RECOMMENDED default splitter.
-    ' Tries paragraphs -> sentences -> words hierarchically.
-    ' from langchain_text_splitters import RecursiveCharacterTextSplitter
-    -separators: List[str]
-    ' defaults: ["\n\n", "\n", " ", ""]
-    +from_language(language: Language): RecursiveCharacterTextSplitter
-    ' Language enum: PYTHON, JS, TS, MARKDOWN, HTML,
-    '   LATEX, SOL, RUST, GO, JAVA, CPP, C, SCALA,
-    '   RUBY, RST, PROTO, COBOL, ELIXIR, KOTLIN, LUA
-  }
-
-  ' --- Length-based splitters ---
-  class CharacterTextSplitter #FDF5E6 {
-    ' from langchain_text_splitters import CharacterTextSplitter
-    ' Splits on a single separator (default: "\n\n").
-    -separator: str
-    +from_tiktoken_encoder(encoding_name, chunk_size)
-    +from_huggingface_tokenizer(tokenizer)
-  }
-
-  class TokenTextSplitter #FDF5E6 {
-    ' from langchain_text_splitters import TokenTextSplitter
-    ' Splits based on token count via tiktoken.
-    ' pip install tiktoken
-    -encoding_name: str
-    -model_name: str
-    -allowed_special: Set
-    -disallowed_special: Union
-  }
-
-  class SentenceTransformersTokenTextSplitter #FDF5E6 {
-    ' from langchain_text_splitters import SentenceTransformersTokenTextSplitter
-    ' Counts tokens using a SentenceTransformer tokenizer.
-    ' pip install sentence-transformers
-    -model_name: str
-    -tokens_per_chunk: int
-    -add_start_index: bool
-  }
-
-  ' --- Document-structure-based splitters ---
-  class MarkdownHeaderTextSplitter #FDF5E6 {
-    ' from langchain_text_splitters import MarkdownHeaderTextSplitter
-    ' Splits on Markdown headings (#, ##, ###, etc.)
-    ' and propagates header text into chunk metadata.
-    ' Does NOT inherit TextSplitter; standalone class.
-    -headers_to_split_on: List[Tuple[str, str]]
-    -strip_headers: bool
-    -return_each_line: bool
-    +split_text(text): List[Document]
-  }
-
-  class HTMLHeaderTextSplitter #FDF5E6 {
-    ' from langchain_text_splitters import HTMLHeaderTextSplitter
-    ' Splits HTML by heading tags (h1..h4) and stores
-    ' heading hierarchy in Document metadata.
-    ' Does NOT inherit TextSplitter; standalone class.
-    -headers_to_split_on: List[Tuple[str, str]]
-    -return_each_element: bool
-    +split_text(text): List[Document]
-    +split_text_from_url(url): List[Document]
-    +split_text_from_file(file): List[Document]
-  }
-
-  class RecursiveJsonSplitter #FDF5E6 {
-    ' from langchain_text_splitters import RecursiveJsonSplitter
-    ' Recursively splits large JSON objects / arrays
-    ' into smaller chunks that fit within context windows.
-    ' Does NOT inherit TextSplitter; standalone class.
-    -max_chunk_size: int
-    -min_chunk_size: int
-    +split_json(json_data): List[Dict]
-    +split_text(json_data, convert_lists): List[str]
-    +create_documents(texts, metadatas): List[Document]
-  }
-
-  class SpacyTextSplitter #FDF5E6 {
-    ' from langchain_text_splitters import SpacyTextSplitter
-    ' Splits text into sentences using spaCy NLP pipeline.
-    ' pip install spacy && python -m spacy download en_core_web_sm
-    -pipeline: str
-    -max_length: int
-  }
-
-  class NLTKTextSplitter #FDF5E6 {
-    ' from langchain_text_splitters import NLTKTextSplitter
-    ' Splits text into sentences using NLTK punkt tokenizer.
-    ' pip install nltk
-    -separator: str
-    -language: str
-  }
-
   note as LoaderNote
     Document Loader categories (langchain-community):
       Core files : TextLoader, CSVLoader, JSONLoader,
@@ -1047,28 +941,6 @@ package "langchain-community - Document Processing" #FDF5E6 {
     Use load() for small sets; lazy_load() for large ones.
     load_and_split() is DEPRECATED - call load() then
     splitter.split_documents() separately.
-  end note
-
-  note as SplitterNote
-    Text Splitter categories (langchain-text-splitters):
-      Text-structure (recommended default):
-        RecursiveCharacterTextSplitter
-          -> use from_language() for source code
-             (Python, JS, TS, Markdown, HTML, Go ...)
-      Length-based:
-        CharacterTextSplitter  (single separator)
-        TokenTextSplitter      (tiktoken)
-        SentenceTransformersTokenTextSplitter
-      Document-structure (standalone, not TextSplitter):
-        MarkdownHeaderTextSplitter  (# / ## / ### headers)
-        HTMLHeaderTextSplitter      (h1..h4 tags)
-        RecursiveJsonSplitter       (JSON objects/arrays)
-      Sentence-level NLP:
-        SpacyTextSplitter  (spaCy pipeline)
-        NLTKTextSplitter   (NLTK punkt)
-    MarkdownHeaderTextSplitter, HTMLHeaderTextSplitter,
-    and RecursiveJsonSplitter are standalone classes and
-    do NOT extend TextSplitter.
   end note
 }
 
@@ -1102,6 +974,140 @@ BaseDocumentLoader <|-- SlackDirectoryLoader
 BaseDocumentLoader <|-- GithubFileLoader
 BaseDocumentLoader <|-- UnstructuredMarkdownLoader
 BaseDocumentLoader ..> Document : produces
+
+' =============================================================================
+' TEXT SPLITTERS (langchain-text-splitters)
+' =============================================================================
+package "langchain-text-splitters" #E8FFF5 {
+
+  ' pip install langchain-text-splitters
+
+  abstract class TextSplitter #E8FFF5 {
+    -chunk_size: int
+    -chunk_overlap: int
+    -length_function: Callable
+    -keep_separator: bool
+    {abstract} +split_text(text): List[str]
+    +split_documents(docs): List[Document]
+    +create_documents(texts): List[Document]
+  }
+
+  ' --- Text-structure-based (recommended default) ---
+  class RecursiveCharacterTextSplitter #E8FFF5 {
+    ' RECOMMENDED default splitter.
+    ' Tries paragraphs -> sentences -> words hierarchically.
+    ' from langchain_text_splitters import RecursiveCharacterTextSplitter
+    -separators: List[str]
+    ' defaults: ["\n\n", "\n", " ", ""]
+    +from_language(language: Language): RecursiveCharacterTextSplitter
+    ' Language enum: PYTHON, JS, TS, MARKDOWN, HTML,
+    '   LATEX, SOL, RUST, GO, JAVA, CPP, C, SCALA,
+    '   RUBY, RST, PROTO, COBOL, ELIXIR, KOTLIN, LUA
+  }
+
+  ' --- Length-based splitters ---
+  class CharacterTextSplitter #E8FFF5 {
+    ' from langchain_text_splitters import CharacterTextSplitter
+    ' Splits on a single separator (default: "\n\n").
+    -separator: str
+    +from_tiktoken_encoder(encoding_name, chunk_size)
+    +from_huggingface_tokenizer(tokenizer)
+  }
+
+  class TokenTextSplitter #E8FFF5 {
+    ' from langchain_text_splitters import TokenTextSplitter
+    ' Splits based on token count via tiktoken.
+    ' pip install tiktoken
+    -encoding_name: str
+    -model_name: str
+    -allowed_special: Set
+    -disallowed_special: Union
+  }
+
+  class SentenceTransformersTokenTextSplitter #E8FFF5 {
+    ' from langchain_text_splitters import SentenceTransformersTokenTextSplitter
+    ' Counts tokens using a SentenceTransformer tokenizer.
+    ' pip install sentence-transformers
+    -model_name: str
+    -tokens_per_chunk: int
+    -add_start_index: bool
+  }
+
+  ' --- Sentence-level NLP splitters ---
+  class SpacyTextSplitter #E8FFF5 {
+    ' from langchain_text_splitters import SpacyTextSplitter
+    ' Splits text into sentences using spaCy NLP pipeline.
+    ' pip install spacy && python -m spacy download en_core_web_sm
+    -pipeline: str
+    -max_length: int
+  }
+
+  class NLTKTextSplitter #E8FFF5 {
+    ' from langchain_text_splitters import NLTKTextSplitter
+    ' Splits text into sentences using NLTK punkt tokenizer.
+    ' pip install nltk
+    -separator: str
+    -language: str
+  }
+
+  ' --- Document-structure-based splitters (standalone - do NOT extend TextSplitter) ---
+  class MarkdownHeaderTextSplitter #E8FFF5 {
+    ' from langchain_text_splitters import MarkdownHeaderTextSplitter
+    ' Splits on Markdown headings (#, ##, ###, etc.)
+    ' and propagates header text into chunk metadata.
+    ' Does NOT inherit TextSplitter; standalone class.
+    -headers_to_split_on: List[Tuple[str, str]]
+    -strip_headers: bool
+    -return_each_line: bool
+    +split_text(text): List[Document]
+  }
+
+  class HTMLHeaderTextSplitter #E8FFF5 {
+    ' from langchain_text_splitters import HTMLHeaderTextSplitter
+    ' Splits HTML by heading tags (h1..h4) and stores
+    ' heading hierarchy in Document metadata.
+    ' Does NOT inherit TextSplitter; standalone class.
+    -headers_to_split_on: List[Tuple[str, str]]
+    -return_each_element: bool
+    +split_text(text): List[Document]
+    +split_text_from_url(url): List[Document]
+    +split_text_from_file(file): List[Document]
+  }
+
+  class RecursiveJsonSplitter #E8FFF5 {
+    ' from langchain_text_splitters import RecursiveJsonSplitter
+    ' Recursively splits large JSON objects / arrays
+    ' into smaller chunks that fit within context windows.
+    ' Does NOT inherit TextSplitter; standalone class.
+    -max_chunk_size: int
+    -min_chunk_size: int
+    +split_json(json_data): List[Dict]
+    +split_text(json_data, convert_lists): List[str]
+    +create_documents(texts, metadatas): List[Document]
+  }
+
+  note as SplitterNote
+    Text Splitter categories (langchain-text-splitters):
+      Text-structure (recommended default):
+        RecursiveCharacterTextSplitter
+          -> use from_language() for source code
+             (Python, JS, TS, Markdown, HTML, Go ...)
+      Length-based:
+        CharacterTextSplitter  (single separator)
+        TokenTextSplitter      (tiktoken)
+        SentenceTransformersTokenTextSplitter
+      Sentence-level NLP:
+        SpacyTextSplitter  (spaCy pipeline)
+        NLTKTextSplitter   (NLTK punkt)
+      Document-structure (standalone, NOT a TextSplitter):
+        MarkdownHeaderTextSplitter  (# / ## / ### headers)
+        HTMLHeaderTextSplitter      (h1..h4 tags + I/O helpers)
+        RecursiveJsonSplitter       (dict/list input, not str)
+    Chain structure-based + length-based for best results:
+      html_chunks = HTMLHeaderTextSplitter(...).split_text(html)
+      final = RecursiveCharacterTextSplitter(500).split_documents(html_chunks)
+  end note
+}
 
 ' Splitter inheritance (TextSplitter subclasses)
 TextSplitter <|-- RecursiveCharacterTextSplitter
