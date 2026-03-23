@@ -17,6 +17,14 @@ legend top left
   |<#FFE8E8> Pink   | langgraph 1.0 Types and Primitives            |
   |<#FFF0E8> Orange | langchain 1.0 Middleware support types        |
   |<#E8FFF5> Mint   | langchain-text-splitters                      |
+
+  |= Arrow colour   |= Relationship                                 |
+  |<#2196F3> Blue   | Inheritance  (<|--)                           |
+  |<#1ABC9C> Teal   | Realization  (--|>)                           |
+  |<#FF9800> Orange | Dependency / uses  (..>)                      |
+  |<#4CAF50> Green  | Aggregation  (o--)                            |
+  |<#E91E63> Pink   | Composition  (*--)                            |
+  |<#9C27B0> Purple | Association  (-->)                            |
 endlegend
 
 note as PackageNote
@@ -96,7 +104,7 @@ package "langchain-core - Runnable Interface" #E8F4FD {
     '                 "checkpoint_id": "xyz"}
   }
 
-  Runnable <|-- RunnableSerializable
+  Runnable <|-[#2196F3]- RunnableSerializable
 }
 
 ' =============================================================================
@@ -159,14 +167,14 @@ package "langchain-core - Structural Runnables (LCEL)" #E8F4FD {
   }
 }
 
-Runnable <|-- RunnableSequence
-Runnable <|-- RunnableParallel
-Runnable <|-- RunnableLambda
-Runnable <|-- RunnablePassthrough
-Runnable <|-- RunnableBranch
-Runnable <|-- RunnableWithFallbacks
-Runnable <|-- RunnableBinding
-Runnable <|-- RunnableWithMessageHistory
+Runnable <|-[#2196F3]- RunnableSequence
+Runnable <|-[#2196F3]- RunnableParallel
+Runnable <|-[#2196F3]- RunnableLambda
+Runnable <|-[#2196F3]- RunnablePassthrough
+Runnable <|-[#2196F3]- RunnableBranch
+Runnable <|-[#2196F3]- RunnableWithFallbacks
+Runnable <|-[#2196F3]- RunnableBinding
+Runnable <|-[#2196F3]- RunnableWithMessageHistory
 
 note right of RunnableSequence
   Built with the pipe operator:
@@ -210,9 +218,9 @@ package "langchain-core - Language Models" #E8F4FD {
   }
 }
 
-RunnableSerializable <|-- BaseLanguageModel
-BaseLanguageModel <|-- BaseChatModel
-init_chat_model ..> BaseChatModel : returns
+RunnableSerializable <|-[#2196F3]- BaseLanguageModel
+BaseLanguageModel <|-[#2196F3]- BaseChatModel
+init_chat_model .[#FF9800].> BaseChatModel : returns
 
 ' =============================================================================
 ' PROVIDER PACKAGES: CHAT MODEL IMPLEMENTATIONS
@@ -277,15 +285,15 @@ package "Provider Packages - Chat Models" #FFF8E1 {
   }
 }
 
-BaseChatModel <|-- ChatOpenAI
-BaseChatModel <|-- AzureChatOpenAI
-BaseChatModel <|-- ChatAnthropic
-BaseChatModel <|-- ChatGoogleGenerativeAI
-BaseChatModel <|-- ChatOllama
-BaseChatModel <|-- ChatGroq
-BaseChatModel <|-- ChatMistralAI
-BaseChatModel <|-- ChatBedrock
-BaseChatModel <|-- ChatDeepSeek
+BaseChatModel <|-[#2196F3]- ChatOpenAI
+BaseChatModel <|-[#2196F3]- AzureChatOpenAI
+BaseChatModel <|-[#2196F3]- ChatAnthropic
+BaseChatModel <|-[#2196F3]- ChatGoogleGenerativeAI
+BaseChatModel <|-[#2196F3]- ChatOllama
+BaseChatModel <|-[#2196F3]- ChatGroq
+BaseChatModel <|-[#2196F3]- ChatMistralAI
+BaseChatModel <|-[#2196F3]- ChatBedrock
+BaseChatModel <|-[#2196F3]- ChatDeepSeek
 
 ' =============================================================================
 ' LANGCHAIN-CORE: MESSAGES
@@ -347,13 +355,13 @@ package "langchain-core - Messages" #E8F4FD {
   }
 }
 
-BaseMessage <|-- HumanMessage
-BaseMessage <|-- AIMessage
-BaseMessage <|-- SystemMessage
-BaseMessage <|-- ToolMessage
-BaseMessage <|-- RemoveMessage
-AIMessage <|-- AIMessageChunk
-AIMessage "1" *-- "0..*" ToolCall : contains
+BaseMessage <|-[#2196F3]- HumanMessage
+BaseMessage <|-[#2196F3]- AIMessage
+BaseMessage <|-[#2196F3]- SystemMessage
+BaseMessage <|-[#2196F3]- ToolMessage
+BaseMessage <|-[#2196F3]- RemoveMessage
+AIMessage <|-[#2196F3]- AIMessageChunk
+AIMessage "1" *-[#E91E63]- "0..*" ToolCall : contains
 
 ' =============================================================================
 ' LANGCHAIN-CORE: DOCUMENT
@@ -414,12 +422,12 @@ package "langchain-core - Prompts" #E8F4FD {
   }
 }
 
-Runnable <|-- BasePromptTemplate
-BasePromptTemplate <|-- PromptTemplate
-BasePromptTemplate <|-- ChatPromptTemplate
-BasePromptTemplate <|-- FewShotPromptTemplate
-BasePromptTemplate <|-- MessagesPlaceholder
-BasePromptTemplate ..> PromptValue : returns
+Runnable <|-[#2196F3]- BasePromptTemplate
+BasePromptTemplate <|-[#2196F3]- PromptTemplate
+BasePromptTemplate <|-[#2196F3]- ChatPromptTemplate
+BasePromptTemplate <|-[#2196F3]- FewShotPromptTemplate
+BasePromptTemplate <|-[#2196F3]- MessagesPlaceholder
+BasePromptTemplate .[#FF9800].> PromptValue : returns
 
 ' =============================================================================
 ' LANGCHAIN-CORE: OUTPUT PARSERS
@@ -457,12 +465,12 @@ package "langchain-core - Output Parsers" #E8F4FD {
   }
 }
 
-Runnable <|-- BaseOutputParser
-BaseOutputParser <|-- StrOutputParser
-BaseOutputParser <|-- JsonOutputParser
-BaseOutputParser <|-- PydanticOutputParser
-BaseOutputParser <|-- XMLOutputParser
-BaseOutputParser <|-- CommaSeparatedListOutputParser
+Runnable <|-[#2196F3]- BaseOutputParser
+BaseOutputParser <|-[#2196F3]- StrOutputParser
+BaseOutputParser <|-[#2196F3]- JsonOutputParser
+BaseOutputParser <|-[#2196F3]- PydanticOutputParser
+BaseOutputParser <|-[#2196F3]- XMLOutputParser
+BaseOutputParser <|-[#2196F3]- CommaSeparatedListOutputParser
 
 ' =============================================================================
 ' LANGCHAIN-CORE: TOOLS
@@ -518,11 +526,11 @@ package "langchain-core - Tools" #E8F4FD {
   }
 }
 
-Runnable <|-- BaseTool
-BaseTool <|-- Tool
-BaseTool <|-- StructuredTool
-tool_decorator ..> StructuredTool : returns
-StructuredTool ..> InjectedToolArgs : uses for injection
+Runnable <|-[#2196F3]- BaseTool
+BaseTool <|-[#2196F3]- Tool
+BaseTool <|-[#2196F3]- StructuredTool
+tool_decorator .[#FF9800].> StructuredTool : returns
+StructuredTool .[#FF9800].> InjectedToolArgs : uses for injection
 
 ' =============================================================================
 ' LANGCHAIN-CORE: EMBEDDINGS
@@ -561,10 +569,10 @@ package "Provider Packages - Embeddings" #FFF8E1 {
   }
 }
 
-Embeddings <|-- OpenAIEmbeddings
-Embeddings <|-- AzureOpenAIEmbeddings
-Embeddings <|-- BedrockEmbeddings
-Embeddings <|-- GoogleGenerativeAIEmbeddings
+Embeddings <|-[#2196F3]- OpenAIEmbeddings
+Embeddings <|-[#2196F3]- AzureOpenAIEmbeddings
+Embeddings <|-[#2196F3]- BedrockEmbeddings
+Embeddings <|-[#2196F3]- GoogleGenerativeAIEmbeddings
 
 ' =============================================================================
 ' LANGCHAIN-CORE: RETRIEVAL
@@ -588,9 +596,9 @@ package "langchain-core - Retrieval" #E8F4FD {
   }
 }
 
-Runnable <|-- BaseRetriever
-VectorStore ..> Embeddings : uses for indexing
-BaseRetriever ..> Document  : returns
+Runnable <|-[#2196F3]- BaseRetriever
+VectorStore .[#FF9800].> Embeddings : uses for indexing
+BaseRetriever .[#FF9800].> Document  : returns
 
 ' =============================================================================
 ' COMMUNITY / PARTNER: VECTOR STORES
@@ -641,14 +649,14 @@ package "langchain-community - Vector Stores" #FDF5E6 {
   }
 }
 
-VectorStore <|-- InMemoryVectorStore
-VectorStore <|-- Chroma
-VectorStore <|-- FAISS
-VectorStore <|-- Pinecone
-VectorStore <|-- Weaviate
-VectorStore <|-- Qdrant
-BaseRetriever <|-- VectorStoreRetriever
-VectorStoreRetriever o-- VectorStore
+VectorStore <|-[#2196F3]- InMemoryVectorStore
+VectorStore <|-[#2196F3]- Chroma
+VectorStore <|-[#2196F3]- FAISS
+VectorStore <|-[#2196F3]- Pinecone
+VectorStore <|-[#2196F3]- Weaviate
+VectorStore <|-[#2196F3]- Qdrant
+BaseRetriever <|-[#2196F3]- VectorStoreRetriever
+VectorStoreRetriever o-[#4CAF50]- VectorStore
 
 ' =============================================================================
 ' COMMUNITY: DOCUMENT LOADERS
@@ -945,35 +953,35 @@ package "langchain-community - Document Loaders" #FDF5E6 {
 }
 
 ' Loader inheritance
-BaseDocumentLoader <|-- TextLoader
-BaseDocumentLoader <|-- CSVLoader
-BaseDocumentLoader <|-- JSONLoader
-BaseDocumentLoader <|-- BSHTMLLoader
-BaseDocumentLoader <|-- DirectoryLoader
-BaseDocumentLoader <|-- UnstructuredFileLoader
-BaseDocumentLoader <|-- PyPDFLoader
-BaseDocumentLoader <|-- PyMuPDFLoader
-BaseDocumentLoader <|-- PDFPlumberLoader
-BaseDocumentLoader <|-- PDFMinerLoader
-BaseDocumentLoader <|-- PyPDFDirectoryLoader
-BaseDocumentLoader <|-- PyPDFium2Loader
-BaseDocumentLoader <|-- WebBaseLoader
-BaseDocumentLoader <|-- RecursiveUrlLoader
-BaseDocumentLoader <|-- SitemapLoader
-BaseDocumentLoader <|-- FirecrawlLoader
-BaseDocumentLoader <|-- WikipediaLoader
-BaseDocumentLoader <|-- ArxivLoader
-BaseDocumentLoader <|-- YoutubeTranscriptLoader
-BaseDocumentLoader <|-- S3FileLoader
-BaseDocumentLoader <|-- S3DirectoryLoader
-BaseDocumentLoader <|-- GoogleDriveLoader
-BaseDocumentLoader <|-- AzureBlobStorageLoader
-BaseDocumentLoader <|-- NotionDirectoryLoader
-BaseDocumentLoader <|-- ConfluenceLoader
-BaseDocumentLoader <|-- SlackDirectoryLoader
-BaseDocumentLoader <|-- GithubFileLoader
-BaseDocumentLoader <|-- UnstructuredMarkdownLoader
-BaseDocumentLoader ..> Document : produces
+BaseDocumentLoader <|-[#2196F3]- TextLoader
+BaseDocumentLoader <|-[#2196F3]- CSVLoader
+BaseDocumentLoader <|-[#2196F3]- JSONLoader
+BaseDocumentLoader <|-[#2196F3]- BSHTMLLoader
+BaseDocumentLoader <|-[#2196F3]- DirectoryLoader
+BaseDocumentLoader <|-[#2196F3]- UnstructuredFileLoader
+BaseDocumentLoader <|-[#2196F3]- PyPDFLoader
+BaseDocumentLoader <|-[#2196F3]- PyMuPDFLoader
+BaseDocumentLoader <|-[#2196F3]- PDFPlumberLoader
+BaseDocumentLoader <|-[#2196F3]- PDFMinerLoader
+BaseDocumentLoader <|-[#2196F3]- PyPDFDirectoryLoader
+BaseDocumentLoader <|-[#2196F3]- PyPDFium2Loader
+BaseDocumentLoader <|-[#2196F3]- WebBaseLoader
+BaseDocumentLoader <|-[#2196F3]- RecursiveUrlLoader
+BaseDocumentLoader <|-[#2196F3]- SitemapLoader
+BaseDocumentLoader <|-[#2196F3]- FirecrawlLoader
+BaseDocumentLoader <|-[#2196F3]- WikipediaLoader
+BaseDocumentLoader <|-[#2196F3]- ArxivLoader
+BaseDocumentLoader <|-[#2196F3]- YoutubeTranscriptLoader
+BaseDocumentLoader <|-[#2196F3]- S3FileLoader
+BaseDocumentLoader <|-[#2196F3]- S3DirectoryLoader
+BaseDocumentLoader <|-[#2196F3]- GoogleDriveLoader
+BaseDocumentLoader <|-[#2196F3]- AzureBlobStorageLoader
+BaseDocumentLoader <|-[#2196F3]- NotionDirectoryLoader
+BaseDocumentLoader <|-[#2196F3]- ConfluenceLoader
+BaseDocumentLoader <|-[#2196F3]- SlackDirectoryLoader
+BaseDocumentLoader <|-[#2196F3]- GithubFileLoader
+BaseDocumentLoader <|-[#2196F3]- UnstructuredMarkdownLoader
+BaseDocumentLoader .[#FF9800].> Document : produces
 
 ' =============================================================================
 ' TEXT SPLITTERS (langchain-text-splitters)
@@ -1110,18 +1118,18 @@ package "langchain-text-splitters" #E8FFF5 {
 }
 
 ' Splitter inheritance (TextSplitter subclasses)
-TextSplitter <|-- RecursiveCharacterTextSplitter
-TextSplitter <|-- CharacterTextSplitter
-TextSplitter <|-- TokenTextSplitter
-TextSplitter <|-- SentenceTransformersTokenTextSplitter
-TextSplitter <|-- SpacyTextSplitter
-TextSplitter <|-- NLTKTextSplitter
-TextSplitter ..> Document : splits/produces
+TextSplitter <|-[#2196F3]- RecursiveCharacterTextSplitter
+TextSplitter <|-[#2196F3]- CharacterTextSplitter
+TextSplitter <|-[#2196F3]- TokenTextSplitter
+TextSplitter <|-[#2196F3]- SentenceTransformersTokenTextSplitter
+TextSplitter <|-[#2196F3]- SpacyTextSplitter
+TextSplitter <|-[#2196F3]- NLTKTextSplitter
+TextSplitter .[#FF9800].> Document : splits/produces
 
 ' Standalone structure-based splitters produce Documents directly
-MarkdownHeaderTextSplitter ..> Document : produces
-HTMLHeaderTextSplitter ..> Document : produces
-RecursiveJsonSplitter ..> Document : produces
+MarkdownHeaderTextSplitter .[#FF9800].> Document : produces
+HTMLHeaderTextSplitter .[#FF9800].> Document : produces
+RecursiveJsonSplitter .[#FF9800].> Document : produces
 
 ' =============================================================================
 ' LANGCHAIN-CORE: CALLBACKS
@@ -1151,10 +1159,10 @@ package "langchain-core - Callbacks" #E8F4FD {
   }
 }
 
-BaseCallbackHandler <|-- StdOutCallbackHandler
-BaseCallbackHandler <|-- StreamingStdOutCallbackHandler
-Runnable ..> RunnableConfig      : configured by
-Runnable ..> BaseCallbackHandler : notifies
+BaseCallbackHandler <|-[#2196F3]- StdOutCallbackHandler
+BaseCallbackHandler <|-[#2196F3]- StreamingStdOutCallbackHandler
+Runnable .[#FF9800].> RunnableConfig      : configured by
+Runnable .[#FF9800].> BaseCallbackHandler : notifies
 
 ' =============================================================================
 ' LANGCHAIN-CORE: CHAT MESSAGE HISTORY
@@ -1179,9 +1187,9 @@ package "langchain-core - Chat Message History" #E8F4FD {
   }
 }
 
-BaseChatMessageHistory <|-- ChatMessageHistory
-BaseChatMessageHistory "1" o-- "0..*" BaseMessage : stores
-RunnableWithMessageHistory o-- BaseChatMessageHistory : per-session store
+BaseChatMessageHistory <|-[#2196F3]- ChatMessageHistory
+BaseChatMessageHistory "1" o-[#4CAF50]- "0..*" BaseMessage : stores
+RunnableWithMessageHistory o-[#4CAF50]- BaseChatMessageHistory : per-session store
 
 ' =============================================================================
 ' LANGCHAIN: TOOLKITS
@@ -1214,11 +1222,11 @@ package "langchain - Toolkits" #F0FFF0 {
   }
 }
 
-BaseToolkit <|-- SQLDatabaseToolkit
-BaseToolkit <|-- VectorStoreToolkit
-BaseToolkit <|-- FileManagementToolkit
-BaseToolkit <|-- JsonToolkit
-BaseToolkit ..> BaseTool : produces
+BaseToolkit <|-[#2196F3]- SQLDatabaseToolkit
+BaseToolkit <|-[#2196F3]- VectorStoreToolkit
+BaseToolkit <|-[#2196F3]- FileManagementToolkit
+BaseToolkit <|-[#2196F3]- JsonToolkit
+BaseToolkit .[#FF9800].> BaseTool : produces
 
 ' =============================================================================
 ' LANGCHAIN 1.0: MIDDLEWARE SUPPORT TYPES
@@ -1297,10 +1305,10 @@ package "langchain 1.0 - Middleware Support Types" #FFF0E8 {
   end note
 }
 
-AgentState ..> BaseMessage     : holds list of
-ModelRequest o-- AgentState    : carries
-ModelRequest o-- SystemMessage : system_message field
-ToolCallRequest o-- ToolCall   : carries
+AgentState .[#FF9800].> BaseMessage     : holds list of
+ModelRequest o-[#4CAF50]- AgentState    : carries
+ModelRequest o-[#4CAF50]- SystemMessage : system_message field
+ToolCallRequest o-[#4CAF50]- ToolCall   : carries
 
 ' =============================================================================
 ' LANGCHAIN 1.0: AGENT MIDDLEWARE
@@ -1562,9 +1570,9 @@ package "langchain 1.0 - Agent Middleware" #F0FFF0 {
     ' Codex CLI sandbox
   }
 
-  HostExecutionPolicy --|> BaseExecutionPolicy
-  DockerExecutionPolicy --|> BaseExecutionPolicy
-  CodexSandboxExecutionPolicy --|> BaseExecutionPolicy
+  HostExecutionPolicy -[#1ABC9C]-|> BaseExecutionPolicy
+  DockerExecutionPolicy -[#1ABC9C]-|> BaseExecutionPolicy
+  CodexSandboxExecutionPolicy -[#1ABC9C]-|> BaseExecutionPolicy
 
   class FilesystemFileSearchMiddleware #F0FFF0 {
     ' Adds glob_search and grep_search tools to the agent.
@@ -1592,30 +1600,30 @@ package "langchain 1.0 - Agent Middleware" #F0FFF0 {
   end note
 }
 
-AgentMiddleware <|-- SummarizationMiddleware
-AgentMiddleware <|-- HumanInTheLoopMiddleware
-AgentMiddleware <|-- ModelCallLimitMiddleware
-AgentMiddleware <|-- ToolCallLimitMiddleware
-AgentMiddleware <|-- ModelFallbackMiddleware
-AgentMiddleware <|-- PIIMiddleware
-AgentMiddleware <|-- TodoListMiddleware
-AgentMiddleware <|-- LLMToolSelectorMiddleware
-AgentMiddleware <|-- ToolRetryMiddleware
-AgentMiddleware <|-- ModelRetryMiddleware
-AgentMiddleware <|-- LLMToolEmulator
-AgentMiddleware <|-- ContextEditingMiddleware
-AgentMiddleware <|-- ShellToolMiddleware
-AgentMiddleware <|-- FilesystemFileSearchMiddleware
+AgentMiddleware <|-[#2196F3]- SummarizationMiddleware
+AgentMiddleware <|-[#2196F3]- HumanInTheLoopMiddleware
+AgentMiddleware <|-[#2196F3]- ModelCallLimitMiddleware
+AgentMiddleware <|-[#2196F3]- ToolCallLimitMiddleware
+AgentMiddleware <|-[#2196F3]- ModelFallbackMiddleware
+AgentMiddleware <|-[#2196F3]- PIIMiddleware
+AgentMiddleware <|-[#2196F3]- TodoListMiddleware
+AgentMiddleware <|-[#2196F3]- LLMToolSelectorMiddleware
+AgentMiddleware <|-[#2196F3]- ToolRetryMiddleware
+AgentMiddleware <|-[#2196F3]- ModelRetryMiddleware
+AgentMiddleware <|-[#2196F3]- LLMToolEmulator
+AgentMiddleware <|-[#2196F3]- ContextEditingMiddleware
+AgentMiddleware <|-[#2196F3]- ShellToolMiddleware
+AgentMiddleware <|-[#2196F3]- FilesystemFileSearchMiddleware
 
-ContextEditingMiddleware "1" o-- "1..*" ClearToolUsesEdit : uses
-ShellToolMiddleware o-- BaseExecutionPolicy               : uses
-LLMToolSelectorMiddleware o-- BaseChatModel               : selector model
-SummarizationMiddleware o-- BaseChatModel                 : summary model
-ModelFallbackMiddleware o-- BaseChatModel                 : fallback models
+ContextEditingMiddleware "1" o-[#4CAF50]- "1..*" ClearToolUsesEdit : uses
+ShellToolMiddleware o-[#4CAF50]- BaseExecutionPolicy               : uses
+LLMToolSelectorMiddleware o-[#4CAF50]- BaseChatModel               : selector model
+SummarizationMiddleware o-[#4CAF50]- BaseChatModel                 : summary model
+ModelFallbackMiddleware o-[#4CAF50]- BaseChatModel                 : fallback models
 
-AgentMiddleware ..> AgentState      : receives in node hooks
-AgentMiddleware ..> ModelRequest    : receives in wrap_model_call
-AgentMiddleware ..> ToolCallRequest : receives in wrap_tool_call
+AgentMiddleware .[#FF9800].> AgentState      : receives in node hooks
+AgentMiddleware .[#FF9800].> ModelRequest    : receives in wrap_model_call
+AgentMiddleware .[#FF9800].> ToolCallRequest : receives in wrap_tool_call
 
 ' =============================================================================
 ' LANGCHAIN 1.0: create_agent
@@ -1644,12 +1652,12 @@ package "langchain 1.0 - Agent Factory" #F0FFF0 {
   }
 }
 
-create_agent ..> BaseChatModel      : uses
-create_agent ..> BaseTool           : uses
-create_agent ..> AgentMiddleware    : uses
-create_agent ..> BaseCheckpointer   : uses
-create_agent ..> BaseStore          : uses
-create_agent ..> CompiledStateGraph : returns
+create_agent .[#FF9800].> BaseChatModel      : uses
+create_agent .[#FF9800].> BaseTool           : uses
+create_agent .[#FF9800].> AgentMiddleware    : uses
+create_agent .[#FF9800].> BaseCheckpointer   : uses
+create_agent .[#FF9800].> BaseStore          : uses
+create_agent .[#FF9800].> CompiledStateGraph : returns
 
 note bottom of create_agent
   PRIMARY high-level agent API in LangChain 1.0.
@@ -1930,28 +1938,28 @@ package "langgraph 1.0 - Graph Runtime" #F5F0FF {
   }
 }
 
-StateGraph --> CompiledStateGraph : compile()
+StateGraph -[#9C27B0]-> CompiledStateGraph : compile()
 
-BaseCheckpointer <|-- InMemorySaver
-BaseCheckpointer <|-- SqliteSaver
-BaseCheckpointer <|-- PostgresSaver
-BaseStore <|-- InMemoryStore
+BaseCheckpointer <|-[#2196F3]- InMemorySaver
+BaseCheckpointer <|-[#2196F3]- SqliteSaver
+BaseCheckpointer <|-[#2196F3]- PostgresSaver
+BaseStore <|-[#2196F3]- InMemoryStore
 
-Runnable <|-- CompiledStateGraph
-Runnable <|-- ToolNode
+Runnable <|-[#2196F3]- CompiledStateGraph
+Runnable <|-[#2196F3]- ToolNode
 
-Runtime ..> BaseStore : holds ref to
-StateGraph ..> MessagesState : commonly used as state_schema
-CompiledStateGraph ..> StateSnapshot : get_state() returns
+Runtime .[#FF9800].> BaseStore : holds ref to
+StateGraph .[#FF9800].> MessagesState : commonly used as state_schema
+CompiledStateGraph .[#FF9800].> StateSnapshot : get_state() returns
 
-ToolNode ..> BaseTool    : executes
-ToolNode ..> ToolMessage : returns
+ToolNode .[#FF9800].> BaseTool    : executes
+ToolNode .[#FF9800].> ToolMessage : returns
 
-create_react_agent_LG ..> BaseChatModel      : uses
-create_react_agent_LG ..> BaseTool           : uses
-create_react_agent_LG ..> BaseCheckpointer   : uses
-create_react_agent_LG ..> BaseStore          : uses
-create_react_agent_LG ..> CompiledStateGraph : returns
+create_react_agent_LG .[#FF9800].> BaseChatModel      : uses
+create_react_agent_LG .[#FF9800].> BaseTool           : uses
+create_react_agent_LG .[#FF9800].> BaseCheckpointer   : uses
+create_react_agent_LG .[#FF9800].> BaseStore          : uses
+create_react_agent_LG .[#FF9800].> CompiledStateGraph : returns
 
 note right of StateGraph
   Node function signatures (all optional args):
@@ -2035,8 +2043,8 @@ package "langgraph 1.0 - Functional API" #F5F0FF {
   end note
 }
 
-entrypoint_decorator ..> BaseCheckpointer   : uses
-entrypoint_decorator ..> BaseStore          : uses
-entrypoint_decorator ..> CompiledStateGraph : produces internally
+entrypoint_decorator .[#FF9800].> BaseCheckpointer   : uses
+entrypoint_decorator .[#FF9800].> BaseStore          : uses
+entrypoint_decorator .[#FF9800].> CompiledStateGraph : produces internally
 
 @enduml
